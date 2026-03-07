@@ -560,6 +560,22 @@
     }
 
     /**
+     * Retrieves the context that belongs to the closest parent component with the specified `key`.
+     * Must be called during component initialisation.
+     *
+     * [`createContext`](https://svelte.dev/docs/svelte/svelte#createContext) is a type-safe alternative.
+     *
+     * @template T
+     * @param {any} key
+     * @returns {T}
+     */
+    function getContext(key) {
+    	const context_map = get_or_init_context_map();
+    	const result = /** @type {T} */ (context_map.get(key));
+    	return result;
+    }
+
+    /**
      * @param {Record<string, unknown>} props
      * @param {any} runes
      * @param {Function} [fn]
@@ -608,6 +624,34 @@
     /** @returns {boolean} */
     function is_runes() {
     	return !legacy_mode_flag || (component_context !== null && component_context.l === null);
+    }
+
+    /**
+     * @param {string} name
+     * @returns {Map<unknown, unknown>}
+     */
+    function get_or_init_context_map(name) {
+    	if (component_context === null) {
+    		lifecycle_outside_component();
+    	}
+
+    	return (component_context.c ??= new Map(get_parent_context(component_context) || undefined));
+    }
+
+    /**
+     * @param {ComponentContext} component_context
+     * @returns {Map<unknown, unknown> | null}
+     */
+    function get_parent_context(component_context) {
+    	let parent = component_context.p;
+    	while (parent !== null) {
+    		const context_map = parent.c;
+    		if (context_map !== null) {
+    			return context_map;
+    		}
+    		parent = parent.p;
+    	}
+    	return null;
     }
 
     /** @type {Array<() => void>} */
@@ -3053,6 +3097,18 @@
     	}
     }
 
+    /**
+     * The child of a textarea actually corresponds to the defaultValue property, so we need
+     * to remove it upon hydration to avoid a bug when someone resets the form value.
+     * @param {HTMLTextAreaElement} dom
+     * @returns {void}
+     */
+    function remove_textarea_child(dom) {
+    	if (hydrating && get_first_child(dom) !== null) {
+    		clear_text_content(dom);
+    	}
+    }
+
     let listening_to_form_reset = false;
 
     function add_form_reset_listener() {
@@ -3093,33 +3149,6 @@
     		set_active_reaction(previous_reaction);
     		set_active_effect(previous_effect);
     	}
-    }
-
-    /**
-     * Listen to the given event, and then instantiate a global form reset listener if not already done,
-     * to notify all bindings when the form is reset
-     * @param {HTMLElement} element
-     * @param {string} event
-     * @param {(is_reset?: true) => void} handler
-     * @param {(is_reset?: true) => void} [on_reset]
-     */
-    function listen_to_event_and_reset_event(element, event, handler, on_reset = handler) {
-    	element.addEventListener(event, () => without_reactive_context(handler));
-    	// @ts-expect-error
-    	const prev = element.__on_r;
-    	if (prev) {
-    		// special case for checkbox that can have multiple binds (group & checked)
-    		// @ts-expect-error
-    		element.__on_r = () => {
-    			prev();
-    			on_reset(true);
-    		};
-    	} else {
-    		// @ts-expect-error
-    		element.__on_r = () => on_reset(true);
-    	}
-
-    	add_form_reset_listener();
     }
 
     /** @import { ComponentContext, ComponentContextLegacy, Derived, Effect, TemplateNode, TransitionManager } from '#client' */
@@ -5445,6 +5474,18 @@
     /** @import { EachItem, EachOutroGroup, EachState, Effect, EffectNodes, MaybeSource, Source, TemplateNode, TransitionManager, Value } from '#client' */
     /** @import { Batch } from '../../reactivity/batch.js'; */
 
+    // When making substantive changes to this file, validate them with the each block stress test:
+    // https://svelte.dev/playground/1972b2cf46564476ad8c8c6405b23b7b
+    // This test also exists in this repo, as `packages/svelte/tests/manual/each-stress-test`
+
+    /**
+     * @param {any} _
+     * @param {number} i
+     */
+    function index(_, i) {
+    	return i;
+    }
+
     /**
      * Pause multiple effects simultaneously, and coordinate their
      * subsequent destruction. Used in each blocks
@@ -7602,132 +7643,6 @@
     	return setters;
     }
 
-    /** @import { Batch } from '../../../reactivity/batch.js' */
-
-    /** @type {Set<HTMLInputElement[]>} */
-    const pending = new Set();
-
-    /**
-     * @param {HTMLInputElement[]} inputs
-     * @param {null | [number]} group_index
-     * @param {HTMLInputElement} input
-     * @param {() => unknown} get
-     * @param {(value: unknown) => void} set
-     * @returns {void}
-     */
-    function bind_group(inputs, group_index, input, get, set = get) {
-    	var is_checkbox = input.getAttribute('type') === 'checkbox';
-    	var binding_group = inputs;
-
-    	// needs to be let or related code isn't treeshaken out if it's always false
-    	let hydration_mismatch = false;
-
-    	if (group_index !== null) {
-    		for (var index of group_index) {
-    			// @ts-expect-error
-    			binding_group = binding_group[index] ??= [];
-    		}
-    	}
-
-    	binding_group.push(input);
-
-    	listen_to_event_and_reset_event(
-    		input,
-    		'change',
-    		() => {
-    			// @ts-ignore
-    			var value = input.__value;
-
-    			if (is_checkbox) {
-    				value = get_binding_group_value(binding_group, value, input.checked);
-    			}
-
-    			set(value);
-    		},
-    		// TODO better default value handling
-    		() => set(is_checkbox ? [] : null)
-    	);
-
-    	render_effect(() => {
-    		var value = get();
-
-    		// If we are hydrating and the value has since changed, then use the update value
-    		// from the input instead.
-    		if (hydrating && input.defaultChecked !== input.checked) {
-    			hydration_mismatch = true;
-    			return;
-    		}
-
-    		if (is_checkbox) {
-    			value = value || [];
-    			// @ts-ignore
-    			input.checked = value.includes(input.__value);
-    		} else {
-    			// @ts-ignore
-    			input.checked = is(input.__value, value);
-    		}
-    	});
-
-    	teardown(() => {
-    		var index = binding_group.indexOf(input);
-
-    		if (index !== -1) {
-    			binding_group.splice(index, 1);
-    		}
-    	});
-
-    	if (!pending.has(binding_group)) {
-    		pending.add(binding_group);
-
-    		queue_micro_task(() => {
-    			// necessary to maintain binding group order in all insertion scenarios
-    			binding_group.sort((a, b) => (a.compareDocumentPosition(b) === 4 ? -1 : 1));
-    			pending.delete(binding_group);
-    		});
-    	}
-
-    	queue_micro_task(() => {
-    		if (hydration_mismatch) {
-    			var value;
-
-    			if (is_checkbox) {
-    				value = get_binding_group_value(binding_group, value, input.checked);
-    			} else {
-    				var hydration_input = binding_group.find((input) => input.checked);
-    				// @ts-ignore
-    				value = hydration_input?.__value;
-    			}
-
-    			set(value);
-    		}
-    	});
-    }
-
-    /**
-     * @template V
-     * @param {Array<HTMLInputElement>} group
-     * @param {V} __value
-     * @param {boolean} checked
-     * @returns {V[]}
-     */
-    function get_binding_group_value(group, __value, checked) {
-    	/** @type {Set<V>} */
-    	var value = new Set();
-
-    	for (var i = 0; i < group.length; i += 1) {
-    		if (group[i].checked) {
-    			// @ts-ignore
-    			value.add(group[i].__value);
-    		}
-    	}
-
-    	if (!checked) {
-    		value.delete(__value);
-    	}
-
-    	return Array.from(value);
-    }
-
     /**
      * Resize observer singleton.
      * One listener per element only!
@@ -8653,6 +8568,104 @@
     	return Class;
     }
 
+    const RUNTIME_CALLBACKS_CTX = Symbol('cv-runtime-callbacks');
+
+    /* icon-settings-store.svelte.ts generated by Svelte v5.46.1 */
+
+    const COLLAPSED_KEY = 'cv-settings-icon-collapsed';
+    const OFFSET_KEY = 'cv-settings-icon-offset';
+
+    const ICON_SETTINGS_CTX = Symbol('icon-settings');
+
+    class IconSettingsStore {
+    	persistence;
+    	#isCollapsed = state(false);
+
+    	get isCollapsed() {
+    		return get(this.#isCollapsed);
+    	}
+
+    	set isCollapsed(value) {
+    		set(this.#isCollapsed, value, true);
+    	}
+
+    	#offset = state(0);
+
+    	get offset() {
+    		return get(this.#offset);
+    	}
+
+    	set offset(value) {
+    		set(this.#offset, value, true);
+    	}
+
+    	#isDismissed = state(false);
+
+    	get isDismissed() {
+    		return get(this.#isDismissed);
+    	}
+
+    	set isDismissed(value) {
+    		set(this.#isDismissed, value, true);
+    	}
+
+    	constructor(persistence) {
+    		this.persistence = persistence;
+
+    		const savedCollapsed = persistence.getItem(COLLAPSED_KEY);
+
+    		if (savedCollapsed !== null) {
+    			this.isCollapsed = savedCollapsed === 'true';
+    		} else if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+    			this.isCollapsed = true;
+    		}
+
+    		// Parse offset safely
+    		const savedOffset = persistence.getItem(OFFSET_KEY);
+
+    		if (savedOffset !== null) {
+    			const parsedOffset = parseFloat(savedOffset);
+
+    			if (Number.isFinite(parsedOffset)) {
+    				this.offset = parsedOffset;
+    			} else {
+    				// Corrupted value; clear it out.
+    				this.offset = 0;
+
+    				persistence.removeItem(OFFSET_KEY);
+    			}
+    		}
+    	}
+
+    	setCollapsed(value) {
+    		this.isCollapsed = value;
+    		this.persistence.setItem(COLLAPSED_KEY, value.toString());
+    	}
+
+    	setOffset(value) {
+    		this.offset = value;
+    		this.persistence.setItem(OFFSET_KEY, value.toString());
+    	}
+
+    	resetPositionAndCollapseState() {
+    		this.offset = 0;
+    		this.persistence.removeItem(OFFSET_KEY);
+    		this.persistence.removeItem(COLLAPSED_KEY);
+
+    		if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+    			this.isCollapsed = true;
+    		} else {
+    			this.isCollapsed = false;
+    		}
+
+    		this.isDismissed = false;
+    	}
+
+    	dismiss() {
+    		this.isDismissed = true;
+    	}
+    }
+
     /** @import { Source } from '#client' */
 
     var read_methods = ['forEach', 'isDisjointFrom', 'isSubsetOf', 'isSupersetOf'];
@@ -9347,6 +9360,24 @@
     	}
 
     	/**
+    	 * Update the visibility state of a specific toggle.
+    	 * Handled internally so UI components (like Modal) don't need to mutate arrays directly.
+    	 * @param toggleId The ID of the toggle.
+    	 * @param value The new visibility state.
+    	 */
+    	updateToggleState(toggleId, value) {
+    		const currentShown = this.state.shownToggles || [];
+    		const currentPeek = this.state.peekToggles || [];
+    		const newShown = currentShown.filter((id) => id !== toggleId);
+    		const newPeek = currentPeek.filter((id) => id !== toggleId);
+
+    		if (value === 'show') newShown.push(toggleId);
+    		if (value === 'peek') newPeek.push(toggleId);
+
+    		this.setToggles(newShown, newPeek);
+    	}
+
+    	/**
     	 * Set a specific placeholder value.
     	 * @param key The ID/name of the placeholder.
     	 * @param value The value to set.
@@ -9881,6 +9912,21 @@
     		set(this.#menuTabGroups, value);
     	}
 
+    	#hiddenToggleIds = user_derived(() => {
+    		const shown = activeStateStore.state.shownToggles ?? [];
+    		const peek = activeStateStore.state.peekToggles ?? [];
+
+    		return [...elementStore.detectedToggles].filter((id) => !shown.includes(id) && !peek.includes(id));
+    	});
+
+    	get hiddenToggleIds() {
+    		return get(this.#hiddenToggleIds);
+    	}
+
+    	set hiddenToggleIds(value) {
+    		set(this.#hiddenToggleIds, value);
+    	}
+
     	#hasVisiblePlaceholders = user_derived(() => {
     		return placeholderRegistryStore.definitions.some((d) => {
     			if (d.hiddenFromSettings) return false;
@@ -9920,13 +9966,13 @@
 
     var root$t = from_html(`<div><div role="alert"><button class="close-btn svelte-ysaqmb" aria-label="Dismiss intro">×</button> <p class="text svelte-ysaqmb"> </p></div></div>`);
 
-    const $$css$k = {
+    const $$css$m = {
     	hash: 'svelte-ysaqmb',
     	code: '\n  /* Animation */\n  @keyframes svelte-ysaqmb-popIn {\n    0% {\n      opacity: 0;\n      transform: scale(0.9) translateY(-50%);\n    }\n    100% {\n      opacity: 1;\n      transform: scale(1) translateY(-50%);\n    }\n  }\n\n  /* Reset transform for top/bottom positions */\n  @keyframes svelte-ysaqmb-popInVertical {\n    0% {\n      opacity: 0;\n      transform: scale(0.9);\n    }\n    100% {\n      opacity: 1;\n      transform: scale(1);\n    }\n  }\n\n  /* Simplified Pulse Animation - Shadow Only */\n  @keyframes svelte-ysaqmb-pulse {\n    0% {\n      transform: scale(1);\n      box-shadow:\n        0 4px 6px -1px rgba(0, 0, 0, 0.1),\n        0 0 0 0 rgba(62, 132, 244, 0.7);\n    }\n    50% {\n      transform: scale(1);\n      box-shadow:\n        0 4px 6px -1px rgba(0, 0, 0, 0.1),\n        0 0 0 10px rgba(62, 132, 244, 0);\n    }\n    100% {\n      transform: scale(1);\n      box-shadow:\n        0 4px 6px -1px rgba(0, 0, 0, 0.1),\n        0 0 0 0 rgba(62, 132, 244, 0);\n    }\n  }\n\n  /* Wrapper handles Positioning & Entry Animation */.cv-callout-wrapper.svelte-ysaqmb {position:fixed;z-index:9999;\n\n    /* Default animation (centered ones) */\n    animation: svelte-ysaqmb-popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;}\n\n  /* Inner handles Visuals & Pulse Animation */.cv-callout.svelte-ysaqmb {background:var(--cv-callout-bg, var(--cv-bg));padding:1rem 1.25rem;border-radius:0.5rem;box-shadow:0 4px 6px -1px var(--cv-shadow),\n      0 2px 4px -1px var(--cv-shadow); /* adapt shadow? */max-width:250px;font-size:0.9rem;line-height:1.5;color:var(--cv-callout-text, var(--cv-text));display:flex;align-items:flex-start;gap:0.75rem;font-family:inherit;border:2px solid var(--cv-border);}\n\n  /* Apply pulse to inner callout if enabled */.cv-callout.cv-pulse.svelte-ysaqmb {\n    animation: svelte-ysaqmb-pulse 2s infinite 0.5s;}\n\n  /* Arrow Base */.cv-callout.svelte-ysaqmb::before {content:\'\';position:absolute;width:1rem;height:1rem;background:var(--cv-callout-bg, var(--cv-bg));transform:rotate(45deg);border:2px solid var(--cv-border);z-index:-1;}.close-btn.svelte-ysaqmb {background:transparent;border:none;color:currentColor;opacity:0.7;font-size:1.25rem;line-height:1;cursor:pointer;padding:0;margin:-0.25rem -0.5rem 0 0;transition:opacity 0.15s;flex-shrink:0;}.close-btn.svelte-ysaqmb:hover {color:currentColor;opacity:1;}.text.svelte-ysaqmb {margin:0;flex:1;font-weight:500;}\n\n  /* \n     Position Specifics (Applied to Wrapper)\n  */\n\n  /* Right-side positions (Icon on Right -> Callout on Left) */.pos-top-right.svelte-ysaqmb,\n  .pos-middle-right.svelte-ysaqmb,\n  .pos-bottom-right.svelte-ysaqmb {right:80px;}.pos-top-right.svelte-ysaqmb,\n  .pos-bottom-right.svelte-ysaqmb {\n    animation-name: svelte-ysaqmb-popInVertical;}\n\n  /* X Button Spacing Adjustments */.pos-top-right.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb),\n  .pos-middle-right.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb),\n  .pos-bottom-right.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb) {margin-right:0;margin-left:-0.5rem;}\n\n  /* Left-side positions (Icon on Left -> Callout on Right) */.pos-top-left.svelte-ysaqmb,\n  .pos-middle-left.svelte-ysaqmb,\n  .pos-bottom-left.svelte-ysaqmb {left:80px;}.pos-top-left.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb),\n  .pos-middle-left.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb),\n  .pos-bottom-left.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb) {order:2; /* Move to end */margin-right:-0.5rem;margin-left:0;}.pos-top-left.svelte-ysaqmb,\n  .pos-bottom-left.svelte-ysaqmb {\n    animation-name: svelte-ysaqmb-popInVertical;}\n\n  /* Vertical Alignment */.pos-middle-right.svelte-ysaqmb,\n  .pos-middle-left.svelte-ysaqmb {top:50%;\n    /* transform handled by popIn animation (translateY -50%) */}.pos-top-right.svelte-ysaqmb,\n  .pos-top-left.svelte-ysaqmb {top:20px;}.pos-bottom-right.svelte-ysaqmb,\n  .pos-bottom-left.svelte-ysaqmb {bottom:20px;}\n\n  /* Arrow Positioning (Child of .callout, dependent on Wrapper .pos-*) */\n\n  /* Pointing Right */.pos-top-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-middle-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-bottom-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before {right:-0.5rem;border-left:none;border-bottom:none;}\n\n  /* Pointing Left */.pos-top-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-middle-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-bottom-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before {left:-0.5rem;border-right:none;border-top:none;}\n\n  /* Vertical placement of arrow */.pos-middle-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-middle-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before {top:50%;margin-top:-0.5rem;}.pos-top-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-top-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before {top:1.25rem;}.pos-bottom-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-bottom-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before {bottom:1.25rem;}\n\n  @media print {.cv-callout-wrapper.svelte-ysaqmb {display:none !important;}\n  }'
     };
 
     function IntroCallout($$anchor, $$props) {
-    	append_styles$1($$anchor, $$css$k);
+    	append_styles$1($$anchor, $$css$m);
 
     	let position = prop($$props, 'position', 3, 'middle-left'),
     		message = prop($$props, 'message', 3, 'Customize your reading experience here.'),
@@ -9977,18 +10023,38 @@
 
     delegate(['click']);
 
-    var root$s = from_html(`<div role="button" tabindex="0" aria-label="Open Custom Views Settings"><span class="cv-gear svelte-122ln5">⚙</span></div>`);
+    var root$s = from_svg(`<svg><path xmlns="http://www.w3.org/2000/svg" fill-rule="evenodd" clip-rule="evenodd" d="M12 8.00002C9.79085 8.00002 7.99999 9.79088 7.99999 12C7.99999 14.2092 9.79085 16 12 16C14.2091 16 16 14.2092 16 12C16 9.79088 14.2091 8.00002 12 8.00002ZM9.99999 12C9.99999 10.8955 10.8954 10 12 10C13.1046 10 14 10.8955 14 12C14 13.1046 13.1046 14 12 14C10.8954 14 9.99999 13.1046 9.99999 12Z" fill="#0F1729"></path><path xmlns="http://www.w3.org/2000/svg" fill-rule="evenodd" clip-rule="evenodd" d="M10.7673 1.01709C10.9925 0.999829 11.2454 0.99993 11.4516 1.00001L12.5484 1.00001C12.7546 0.99993 13.0075 0.999829 13.2327 1.01709C13.4989 1.03749 13.8678 1.08936 14.2634 1.26937C14.7635 1.49689 15.1915 1.85736 15.5007 2.31147C15.7454 2.67075 15.8592 3.0255 15.9246 3.2843C15.9799 3.50334 16.0228 3.75249 16.0577 3.9557L16.1993 4.77635L16.2021 4.77788C16.2369 4.79712 16.2715 4.81659 16.306 4.8363L16.3086 4.83774L17.2455 4.49865C17.4356 4.42978 17.6693 4.34509 17.8835 4.28543C18.1371 4.2148 18.4954 4.13889 18.9216 4.17026C19.4614 4.20998 19.9803 4.39497 20.4235 4.70563C20.7734 4.95095 21.0029 5.23636 21.1546 5.4515C21.2829 5.63326 21.4103 5.84671 21.514 6.02029L22.0158 6.86003C22.1256 7.04345 22.2594 7.26713 22.3627 7.47527C22.4843 7.7203 22.6328 8.07474 22.6777 8.52067C22.7341 9.08222 22.6311 9.64831 22.3803 10.1539C22.1811 10.5554 21.9171 10.8347 21.7169 11.0212C21.5469 11.1795 21.3428 11.3417 21.1755 11.4746L20.5 12L21.1755 12.5254C21.3428 12.6584 21.5469 12.8205 21.7169 12.9789C21.9171 13.1653 22.1811 13.4446 22.3802 13.8461C22.631 14.3517 22.7341 14.9178 22.6776 15.4794C22.6328 15.9253 22.4842 16.2797 22.3626 16.5248C22.2593 16.7329 22.1255 16.9566 22.0158 17.14L21.5138 17.9799C21.4102 18.1535 21.2828 18.3668 21.1546 18.5485C21.0028 18.7637 20.7734 19.0491 20.4234 19.2944C19.9803 19.6051 19.4613 19.7901 18.9216 19.8298C18.4954 19.8612 18.1371 19.7852 17.8835 19.7146C17.6692 19.6549 17.4355 19.5703 17.2454 19.5014L16.3085 19.1623L16.306 19.1638C16.2715 19.1835 16.2369 19.2029 16.2021 19.2222L16.1993 19.2237L16.0577 20.0443C16.0228 20.2475 15.9799 20.4967 15.9246 20.7157C15.8592 20.9745 15.7454 21.3293 15.5007 21.6886C15.1915 22.1427 14.7635 22.5032 14.2634 22.7307C13.8678 22.9107 13.4989 22.9626 13.2327 22.983C13.0074 23.0002 12.7546 23.0001 12.5484 23H11.4516C11.2454 23.0001 10.9925 23.0002 10.7673 22.983C10.5011 22.9626 10.1322 22.9107 9.73655 22.7307C9.23648 22.5032 8.80849 22.1427 8.49926 21.6886C8.25461 21.3293 8.14077 20.9745 8.07542 20.7157C8.02011 20.4967 7.97723 20.2475 7.94225 20.0443L7.80068 19.2237L7.79791 19.2222C7.7631 19.2029 7.72845 19.1835 7.69396 19.1637L7.69142 19.1623L6.75458 19.5014C6.5645 19.5702 6.33078 19.6549 6.11651 19.7146C5.86288 19.7852 5.50463 19.8611 5.07841 19.8298C4.53866 19.7901 4.01971 19.6051 3.57654 19.2944C3.2266 19.0491 2.99714 18.7637 2.84539 18.5485C2.71718 18.3668 2.58974 18.1534 2.4861 17.9798L1.98418 17.14C1.87447 16.9566 1.74067 16.7329 1.63737 16.5248C1.51575 16.2797 1.36719 15.9253 1.32235 15.4794C1.26588 14.9178 1.36897 14.3517 1.61976 13.8461C1.81892 13.4446 2.08289 13.1653 2.28308 12.9789C2.45312 12.8205 2.65717 12.6584 2.82449 12.5254L3.47844 12.0054V11.9947L2.82445 11.4746C2.65712 11.3417 2.45308 11.1795 2.28304 11.0212C2.08285 10.8347 1.81888 10.5554 1.61972 10.1539C1.36893 9.64832 1.26584 9.08224 1.3223 8.52069C1.36714 8.07476 1.51571 7.72032 1.63732 7.47528C1.74062 7.26715 1.87443 7.04347 1.98414 6.86005L2.48605 6.02026C2.58969 5.84669 2.71714 5.63326 2.84534 5.45151C2.9971 5.23637 3.22655 4.95096 3.5765 4.70565C4.01966 4.39498 4.53862 4.20999 5.07837 4.17027C5.50458 4.1389 5.86284 4.21481 6.11646 4.28544C6.33072 4.34511 6.56444 4.4298 6.75451 4.49867L7.69141 4.83775L7.69394 4.8363C7.72844 4.8166 7.7631 4.79712 7.79791 4.77788L7.80068 4.77635L7.94225 3.95571C7.97723 3.7525 8.02011 3.50334 8.07542 3.2843C8.14077 3.0255 8.25461 2.67075 8.49926 2.31147C8.80849 1.85736 9.23648 1.49689 9.73655 1.26937C10.1322 1.08936 10.5011 1.03749 10.7673 1.01709ZM14.0938 4.3363C14.011 3.85634 13.9696 3.61637 13.8476 3.43717C13.7445 3.2858 13.6019 3.16564 13.4352 3.0898C13.2378 3.00002 12.9943 3.00002 12.5073 3.00002H11.4927C11.0057 3.00002 10.7621 3.00002 10.5648 3.0898C10.3981 3.16564 10.2555 3.2858 10.1524 3.43717C10.0304 3.61637 9.98895 3.85634 9.90615 4.3363L9.75012 5.24064C9.69445 5.56333 9.66662 5.72467 9.60765 5.84869C9.54975 5.97047 9.50241 6.03703 9.40636 6.13166C9.30853 6.22804 9.12753 6.3281 8.76554 6.52822C8.73884 6.54298 8.71227 6.55791 8.68582 6.57302C8.33956 6.77078 8.16643 6.86966 8.03785 6.90314C7.91158 6.93602 7.83293 6.94279 7.70289 6.93196C7.57049 6.92094 7.42216 6.86726 7.12551 6.7599L6.11194 6.39308C5.66271 6.2305 5.43809 6.14921 5.22515 6.16488C5.04524 6.17811 4.87225 6.23978 4.72453 6.34333C4.5497 6.46589 4.42715 6.67094 4.18206 7.08103L3.72269 7.84965C3.46394 8.2826 3.33456 8.49907 3.31227 8.72078C3.29345 8.90796 3.32781 9.09665 3.41141 9.26519C3.51042 9.4648 3.7078 9.62177 4.10256 9.9357L4.82745 10.5122C5.07927 10.7124 5.20518 10.8126 5.28411 10.9199C5.36944 11.036 5.40583 11.1114 5.44354 11.2504C5.47844 11.379 5.47844 11.586 5.47844 12C5.47844 12.414 5.47844 12.621 5.44354 12.7497C5.40582 12.8887 5.36944 12.9641 5.28413 13.0801C5.20518 13.1875 5.07927 13.2876 4.82743 13.4879L4.10261 14.0643C3.70785 14.3783 3.51047 14.5352 3.41145 14.7349C3.32785 14.9034 3.29349 15.0921 3.31231 15.2793C3.33461 15.501 3.46398 15.7174 3.72273 16.1504L4.1821 16.919C4.4272 17.3291 4.54974 17.5342 4.72457 17.6567C4.8723 17.7603 5.04528 17.8219 5.2252 17.8352C5.43813 17.8508 5.66275 17.7695 6.11199 17.607L7.12553 17.2402C7.42216 17.1328 7.5705 17.0791 7.7029 17.0681C7.83294 17.0573 7.91159 17.064 8.03786 17.0969C8.16644 17.1304 8.33956 17.2293 8.68582 17.427C8.71228 17.4421 8.73885 17.4571 8.76554 17.4718C9.12753 17.6719 9.30853 17.772 9.40635 17.8684C9.50241 17.963 9.54975 18.0296 9.60765 18.1514C9.66662 18.2754 9.69445 18.4367 9.75012 18.7594L9.90615 19.6637C9.98895 20.1437 10.0304 20.3837 10.1524 20.5629C10.2555 20.7142 10.3981 20.8344 10.5648 20.9102C10.7621 21 11.0057 21 11.4927 21H12.5073C12.9943 21 13.2378 21 13.4352 20.9102C13.6019 20.8344 13.7445 20.7142 13.8476 20.5629C13.9696 20.3837 14.011 20.1437 14.0938 19.6637L14.2499 18.7594C14.3055 18.4367 14.3334 18.2754 14.3923 18.1514C14.4502 18.0296 14.4976 17.963 14.5936 17.8684C14.6915 17.772 14.8725 17.6719 15.2344 17.4718C15.2611 17.4571 15.2877 17.4421 15.3141 17.427C15.6604 17.2293 15.8335 17.1304 15.9621 17.0969C16.0884 17.064 16.167 17.0573 16.2971 17.0681C16.4295 17.0791 16.5778 17.1328 16.8744 17.2402L17.888 17.607C18.3372 17.7696 18.5619 17.8509 18.7748 17.8352C18.9547 17.8219 19.1277 17.7603 19.2754 17.6567C19.4502 17.5342 19.5728 17.3291 19.8179 16.919L20.2773 16.1504C20.536 15.7175 20.6654 15.501 20.6877 15.2793C20.7065 15.0921 20.6721 14.9034 20.5885 14.7349C20.4895 14.5353 20.2921 14.3783 19.8974 14.0643L19.1726 13.4879C18.9207 13.2876 18.7948 13.1875 18.7159 13.0801C18.6306 12.9641 18.5942 12.8887 18.5564 12.7497C18.5215 12.6211 18.5215 12.414 18.5215 12C18.5215 11.586 18.5215 11.379 18.5564 11.2504C18.5942 11.1114 18.6306 11.036 18.7159 10.9199C18.7948 10.8126 18.9207 10.7124 19.1725 10.5122L19.8974 9.9357C20.2922 9.62176 20.4896 9.46479 20.5886 9.26517C20.6722 9.09664 20.7065 8.90795 20.6877 8.72076C20.6654 8.49906 20.5361 8.28259 20.2773 7.84964L19.8179 7.08102C19.5728 6.67093 19.4503 6.46588 19.2755 6.34332C19.1277 6.23977 18.9548 6.1781 18.7748 6.16486C18.5619 6.14919 18.3373 6.23048 17.888 6.39307L16.8745 6.75989C16.5778 6.86725 16.4295 6.92093 16.2971 6.93195C16.167 6.94278 16.0884 6.93601 15.9621 6.90313C15.8335 6.86965 15.6604 6.77077 15.3142 6.57302C15.2877 6.55791 15.2611 6.54298 15.2345 6.52822C14.8725 6.3281 14.6915 6.22804 14.5936 6.13166C14.4976 6.03703 14.4502 5.97047 14.3923 5.84869C14.3334 5.72467 14.3055 5.56332 14.2499 5.24064L14.0938 4.3363Z" fill="#0F1729"></path></svg>`);
 
-    const $$css$j = {
+    function IconGear($$anchor, $$props) {
+    	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
+    	var svg = root$s();
+
+    	attribute_effect(svg, () => ({
+    		class: 'cv-modal-icon-svg',
+    		fill: 'currentColor',
+    		viewBox: '0 0 24 24',
+    		xmlns: 'http://www.w3.org/2000/svg',
+    		...rest
+    	}));
+
+    	append($$anchor, svg);
+    }
+
+    var root_1$c = from_html(`<button class="cv-dismiss-btn svelte-122ln5" aria-label="Dismiss settings icon">✕</button>`);
+    var root$r = from_html(`<div role="none"><button class="cv-settings-main-btn svelte-122ln5"><span class="cv-gear svelte-122ln5"><!></span></button> <button class="cv-collapse-btn svelte-122ln5" aria-label="Collapse settings icon"> </button> <!></div>`);
+
+    const $$css$l = {
     	hash: 'svelte-122ln5',
-    	code: '.cv-settings-icon.svelte-122ln5 {position:fixed;background:var(--cv-icon-bg, rgba(255, 255, 255, 0.92));color:var(--cv-icon-color, rgba(0, 0, 0, 0.9));opacity:var(--cv-icon-opacity, 0.6);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;cursor:grab; /* Default cursor */box-shadow:0 4px 12px rgba(0, 0, 0, 0.15);border:2px solid rgba(0, 0, 0, 0.2);z-index:9998;transition:width 0.3s ease,\n      background 0.3s ease,\n      color 0.3s ease,\n      opacity 0.3s ease,\n      border-color 0.3s ease; /* Removed transform transition to allow smooth dragging */touch-action:none; /* Crucial for touch dragging */font-family:-apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif;box-sizing:border-box;user-select:none; /* Prevent text selection while dragging */}.cv-settings-icon.svelte-122ln5:active {cursor:grabbing;}.cv-settings-icon.svelte-122ln5:hover {background:var(--cv-icon-bg, rgba(255, 255, 255, 1));color:var(--cv-icon-color, rgba(0, 0, 0, 1));opacity:1;border-color:rgba(0, 0, 0, 0.3);}\n\n  /* Top-right */.cv-settings-top-right.svelte-122ln5 {top:20px;right:0;border-radius:18px 0 0 18px;padding-left:6px;justify-content:flex-start;border-right:none;}\n\n  /* Top-left */.cv-settings-top-left.svelte-122ln5 {top:20px;left:0;border-radius:0 18px 18px 0;padding-right:6px;justify-content:flex-end;border-left:none;}\n\n  /* Bottom-right */.cv-settings-bottom-right.svelte-122ln5 {bottom:20px;right:0;border-radius:18px 0 0 18px;padding-left:6px;justify-content:flex-start;border-right:none;}\n\n  /* Bottom-left */.cv-settings-bottom-left.svelte-122ln5 {bottom:20px;left:0;border-radius:0 18px 18px 0;padding-right:6px;justify-content:flex-end;border-left:none;}\n\n  /* Middle-left */.cv-settings-middle-left.svelte-122ln5 {top:50%;left:0;\n    /* transform handled by inline style now */border-radius:0 18px 18px 0;padding-right:6px;justify-content:flex-end;border-left:none;}\n\n  /* Middle-right */.cv-settings-middle-right.svelte-122ln5 {top:50%;right:0;\n    /* transform handled by inline style now */border-radius:18px 0 0 18px;padding-left:6px;justify-content:flex-start;border-right:none;}.cv-settings-top-right.svelte-122ln5,\n  .cv-settings-middle-right.svelte-122ln5,\n  .cv-settings-bottom-right.svelte-122ln5,\n  .cv-settings-top-left.svelte-122ln5,\n  .cv-settings-middle-left.svelte-122ln5,\n  .cv-settings-bottom-left.svelte-122ln5 {height:36px;width:36px;}.cv-settings-middle-right.svelte-122ln5:hover,\n  .cv-settings-top-right.svelte-122ln5:hover,\n  .cv-settings-bottom-right.svelte-122ln5:hover,\n  .cv-settings-top-left.svelte-122ln5:hover,\n  .cv-settings-middle-left.svelte-122ln5:hover,\n  .cv-settings-bottom-left.svelte-122ln5:hover {width:55px;}.cv-pulse {\n    animation: svelte-122ln5-pulse 2s infinite;}\n\n  @keyframes svelte-122ln5-pulse {\n    0% {\n      box-shadow:\n        0 4px 12px rgba(0, 0, 0, 0.15),\n        0 0 0 0 rgba(62, 132, 244, 0.7);\n    }\n    70% {\n      box-shadow:\n        0 4px 12px rgba(0, 0, 0, 0.15),\n        0 0 0 10px rgba(62, 132, 244, 0);\n    }\n    100% {\n      box-shadow:\n        0 4px 12px rgba(0, 0, 0, 0.15),\n        0 0 0 0 rgba(62, 132, 244, 0);\n    }\n  }\n\n  @media (max-width: 768px) {.cv-settings-top-right.svelte-122ln5,\n    .cv-settings-top-left.svelte-122ln5 {top:10px;}.cv-settings-bottom-right.svelte-122ln5,\n    .cv-settings-bottom-left.svelte-122ln5 {bottom:10px;}.cv-settings-top-right.svelte-122ln5,\n    .cv-settings-bottom-right.svelte-122ln5,\n    .cv-settings-middle-right.svelte-122ln5 {right:0;}.cv-settings-top-left.svelte-122ln5,\n    .cv-settings-bottom-left.svelte-122ln5,\n    .cv-settings-middle-left.svelte-122ln5 {left:0;}.cv-settings-icon.svelte-122ln5 {width:60px;height:32px;}.cv-settings-icon.svelte-122ln5:hover {width:75px;}\n  }\n\n  @media print {.cv-settings-icon.svelte-122ln5 {display:none !important;}\n  }'
+    	code: '.cv-settings-main-btn.svelte-122ln5 {appearance:none;-webkit-appearance:none;background:transparent;border:none;padding:0;margin:0;flex:1;height:100%;width:100%;display:flex;align-items:inherit;justify-content:inherit;color:inherit;cursor:inherit;border-radius:inherit;}.cv-settings-main-btn.svelte-122ln5:focus-visible {outline:2px solid currentColor;outline-offset:-2px;}.cv-gear.svelte-122ln5 {display:flex;align-items:center;justify-content:center;width:18px;height:18px;}.cv-gear.svelte-122ln5 svg {width:18px;height:18px;}.cv-gear.svelte-122ln5 svg path {fill:currentColor;}.cv-settings-icon.svelte-122ln5 {position:fixed;background:var(--cv-icon-bg, rgba(255, 255, 255, 0.92));color:var(--cv-icon-color, rgba(0, 0, 0, 0.9));opacity:var(--cv-icon-opacity, 0.6);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;cursor:grab; /* Default cursor */box-shadow:0 4px 12px rgba(0, 0, 0, 0.15);border:2px solid rgba(0, 0, 0, 0.2);z-index:9998;transition:width 0.3s ease,\n      background 0.3s ease,\n      color 0.3s ease,\n      opacity 0.3s ease,\n      border-color 0.3s ease,\n      transform 0.4s ease; /* transform transition drives the peek slide animation */touch-action:none; /* Crucial for touch dragging */font-family:-apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif;box-sizing:border-box;user-select:none; /* Prevent text selection while dragging */}.cv-settings-icon.svelte-122ln5:active {cursor:grabbing;}.cv-settings-icon.svelte-122ln5:hover {background:var(--cv-icon-bg, rgba(255, 255, 255, 1));color:var(--cv-icon-color, rgba(0, 0, 0, 1));opacity:1;border-color:rgba(0, 0, 0, 0.3);}\n\n  /* Remove transform transition during drag so it tracks the pointer without lag */.cv-settings-icon.cv-is-dragging.svelte-122ln5 {transition:width 0.3s ease,\n      background 0.3s ease,\n      color 0.3s ease,\n      opacity 0.3s ease,\n      border-color 0.3s ease;}\n\n  /* When collapsed, dim the strip */.cv-settings-icon.cv-is-collapsed.svelte-122ln5 {opacity:0.5;}.cv-settings-icon.cv-is-collapsed.svelte-122ln5:hover {opacity:0.85;}.cv-collapse-btn.svelte-122ln5 {position:absolute;top:0;bottom:0;width:16px;display:flex;align-items:center;justify-content:center;background:rgba(0, 0, 0, 0.12);border:none;padding:0;cursor:pointer;font-size:13px;line-height:1;color:inherit;opacity:0.5;transition:opacity 0.15s ease, background 0.15s ease;}.cv-collapse-btn[data-side=\'left\'].svelte-122ln5 {left:0; /* outer = screen-edge side for left icons */border-radius:0 6px 6px 0;}.cv-collapse-btn[data-side=\'right\'].svelte-122ln5 {right:0; /* outer = screen-edge side for right icons */border-radius:6px 0 0 6px;}.cv-collapse-btn.svelte-122ln5:hover {opacity:1;background:rgba(0, 0, 0, 0.22);}\n\n  /* Hide collapse tab when already collapsed */.cv-settings-icon.cv-is-collapsed.svelte-122ln5 .cv-collapse-btn:where(.svelte-122ln5) {display:none;}.cv-dismiss-btn.svelte-122ln5 {position:absolute;bottom:calc(100% + 4px);width:16px;height:16px;display:flex;align-items:center;justify-content:center;background:rgba(0, 0, 0, 0.15);border:none;border-radius:50%;padding:0;cursor:pointer;font-size:9px;line-height:1;color:inherit;opacity:0.5;transition:opacity 0.15s ease, background 0.15s ease;}.cv-dismiss-btn[data-side=\'left\'].svelte-122ln5 {left:0;}.cv-dismiss-btn[data-side=\'right\'].svelte-122ln5 {right:0;}.cv-dismiss-btn.svelte-122ln5:hover {opacity:1;background:rgba(0, 0, 0, 0.25);}\n\n\n  /* Top-right */.cv-settings-top-right.svelte-122ln5 {top:20px;right:0;border-radius:18px 0 0 18px;padding-left:6px;justify-content:flex-start;border-right:none;}\n\n  /* Top-left */.cv-settings-top-left.svelte-122ln5 {top:20px;left:0;border-radius:0 18px 18px 0;padding-right:6px;justify-content:flex-end;border-left:none;}\n\n  /* Bottom-right */.cv-settings-bottom-right.svelte-122ln5 {bottom:20px;right:0;border-radius:18px 0 0 18px;padding-left:6px;justify-content:flex-start;border-right:none;}\n\n  /* Bottom-left */.cv-settings-bottom-left.svelte-122ln5 {bottom:20px;left:0;border-radius:0 18px 18px 0;padding-right:6px;justify-content:flex-end;border-left:none;}\n\n  /* Middle-left */.cv-settings-middle-left.svelte-122ln5 {top:50%;left:0;\n    /* transform handled by inline style now */border-radius:0 18px 18px 0;padding-right:6px;justify-content:flex-end;border-left:none;}\n\n  /* Middle-right */.cv-settings-middle-right.svelte-122ln5 {top:50%;right:0;\n    /* transform handled by inline style now */border-radius:18px 0 0 18px;padding-left:6px;justify-content:flex-start;border-right:none;}.cv-settings-top-right.svelte-122ln5,\n  .cv-settings-middle-right.svelte-122ln5,\n  .cv-settings-bottom-right.svelte-122ln5,\n  .cv-settings-top-left.svelte-122ln5,\n  .cv-settings-middle-left.svelte-122ln5,\n  .cv-settings-bottom-left.svelte-122ln5 {height:36px;width:36px;}.cv-settings-middle-right.svelte-122ln5:hover,\n  .cv-settings-top-right.svelte-122ln5:hover,\n  .cv-settings-bottom-right.svelte-122ln5:hover,\n  .cv-settings-top-left.svelte-122ln5:hover,\n  .cv-settings-middle-left.svelte-122ln5:hover,\n  .cv-settings-bottom-left.svelte-122ln5:hover {width:55px;}.cv-pulse {\n    animation: svelte-122ln5-pulse 2s infinite;}\n\n  @keyframes svelte-122ln5-pulse {\n    0% {\n      box-shadow:\n        0 4px 12px rgba(0, 0, 0, 0.15),\n        0 0 0 0 rgba(62, 132, 244, 0.7);\n    }\n    70% {\n      box-shadow:\n        0 4px 12px rgba(0, 0, 0, 0.15),\n        0 0 0 10px rgba(62, 132, 244, 0);\n    }\n    100% {\n      box-shadow:\n        0 4px 12px rgba(0, 0, 0, 0.15),\n        0 0 0 0 rgba(62, 132, 244, 0);\n    }\n  }\n\n  @media (max-width: 768px) {.cv-settings-top-right.svelte-122ln5,\n    .cv-settings-top-left.svelte-122ln5 {top:10px;}.cv-settings-bottom-right.svelte-122ln5,\n    .cv-settings-bottom-left.svelte-122ln5 {bottom:10px;}.cv-settings-top-right.svelte-122ln5,\n    .cv-settings-bottom-right.svelte-122ln5,\n    .cv-settings-middle-right.svelte-122ln5 {right:0;}.cv-settings-top-left.svelte-122ln5,\n    .cv-settings-bottom-left.svelte-122ln5,\n    .cv-settings-middle-left.svelte-122ln5 {left:0;}.cv-settings-icon.svelte-122ln5 {width:60px;height:32px;}.cv-settings-icon.svelte-122ln5:hover {width:75px;}\n  }\n\n  @media print {.cv-settings-icon.svelte-122ln5 {display:none !important;}\n  }'
     };
 
     function SettingsIcon($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$j);
+    	append_styles$1($$anchor, $$css$l);
 
     	/* eslint-disable @typescript-eslint/no-explicit-any */
+    	const iconSettingsStore = getContext(ICON_SETTINGS_CTX);
+
     	let position = prop($$props, 'position', 3, 'middle-left'),
     		title = prop($$props, 'title', 3, 'Customize View'),
     		pulse = prop($$props, 'pulse', 3, false),
@@ -9996,34 +10062,26 @@
     		iconColor = prop($$props, 'iconColor', 3, undefined),
     		backgroundColor = prop($$props, 'backgroundColor', 3, undefined),
     		opacity = prop($$props, 'opacity', 3, undefined),
-    		scale = prop($$props, 'scale', 3, undefined),
-    		getIconPosition = prop($$props, 'getIconPosition', 3, undefined),
-    		saveIconPosition = prop($$props, 'saveIconPosition', 3, undefined),
-    		clearIconPosition = prop($$props, 'clearIconPosition', 3, undefined);
+    		scale = prop($$props, 'scale', 3, undefined);
 
     	// Constants
     	const VIEWPORT_MARGIN = 10;
 
     	const DRAG_THRESHOLD = 5;
+    	const PEEK_WIDTH = 20;
     	let isDragging = state(false);
     	let dragStartY = 0;
     	let dragStartOffset = 0;
-    	let currentOffset = state(0);
+    	let dragOffset = state(0);
+    	const currentOffset = user_derived(() => get(isDragging) ? get(dragOffset) : iconSettingsStore.offset);
     	let suppressClick = false;
+    	const isRight = user_derived(() => position()?.includes('right') ?? false);
+    	const isCollapsed = user_derived(() => iconSettingsStore.isCollapsed);
     	let minOffset = -Infinity;
     	let maxOffset = Infinity;
     	let settingsIconElement;
 
     	onMount(() => {
-    		// Load persisted offset
-    		if (getIconPosition()) {
-    			const savedOffset = getIconPosition()();
-
-    			if (savedOffset !== null) {
-    				set(currentOffset, savedOffset, true);
-    			}
-    		}
-
     		// Global event listeners to handle drag leaving the element
     		window.addEventListener('mousemove', handleDragMove);
 
@@ -10032,8 +10090,8 @@
     		window.addEventListener('touchend', endDrag);
     		window.addEventListener('resize', constrainPositionToViewport);
 
-    		// Initial check
-    		constCheckTimer = setTimeout(constrainPositionToViewport, 0); // Ensure layout is ready
+    		// Initial check — defer to ensure layout is ready
+    		constCheckTimer = setTimeout(constrainPositionToViewport, 0);
 
     		return () => {
     			window.removeEventListener('mousemove', handleDragMove);
@@ -10047,10 +10105,9 @@
 
     	let constCheckTimer;
 
-    	function resetPosition() {
-    		set(currentOffset, 0);
-    		dragStartOffset = 0;
-    		clearIconPosition()?.();
+    	function handleCollapse(e) {
+    		e.stopPropagation(); // don't bubble to the icon's onclick
+    		iconSettingsStore.setCollapsed(true);
     	}
 
     	function constrainPositionToViewport() {
@@ -10065,17 +10122,27 @@
     		const min = VIEWPORT_MARGIN - zeroTop;
     		const max = window.innerHeight - VIEWPORT_MARGIN - zeroTop - elementHeight;
 
+    		// Refresh boundaries during drag so handleDragMove respects the new window size
+    		if (get(isDragging)) {
+    			minOffset = min;
+    			maxOffset = max;
+    		}
+
     		// Clamp
     		const clamped = Math.max(min, Math.min(max, get(currentOffset)));
 
     		if (clamped !== get(currentOffset)) {
-    			set(currentOffset, clamped, true);
-    			savePosition();
+    			if (get(isDragging)) {
+    				set(dragOffset, clamped, true);
+    			} else {
+    				iconSettingsStore.setOffset(clamped);
+    			}
     		}
     	}
 
     	function onMouseDown(e) {
     		if (e.button !== 0) return;
+    		if (get(isCollapsed)) return; // strip click expands via onClick; don't start drag
 
     		startDrag(e.clientY);
     	}
@@ -10083,13 +10150,23 @@
     	function onTouchStart(e) {
     		if (e.touches.length !== 1) return;
 
+    		// First tap on a peeking icon just reveals it without starting a drag
+    		if (get(isCollapsed)) {
+    			iconSettingsStore.setCollapsed(false);
+    			e.preventDefault();
+
+    			return;
+    		}
+
     		startDrag(e.touches[0].clientY);
     	}
 
     	function startDrag(clientY) {
+    		iconSettingsStore.setCollapsed(false);
     		set(isDragging, true);
     		dragStartY = clientY;
-    		dragStartOffset = get(currentOffset);
+    		dragStartOffset = iconSettingsStore.offset;
+    		set(dragOffset, dragStartOffset, true);
     		suppressClick = false;
     		calculateDragConstraints();
     	}
@@ -10118,7 +10195,7 @@
     		const rawOffset = dragStartOffset + deltaY;
 
     		// Clamp the offset to keep element on screen
-    		set(currentOffset, Math.max(minOffset, Math.min(maxOffset, rawOffset)), true);
+    		set(dragOffset, Math.max(minOffset, Math.min(maxOffset, rawOffset)), true);
 
     		if (Math.abs(deltaY) > DRAG_THRESHOLD) {
     			suppressClick = true;
@@ -10139,14 +10216,16 @@
     		if (!get(isDragging)) return;
 
     		set(isDragging, false);
-    		savePosition();
+    		iconSettingsStore.setOffset(get(dragOffset));
     	}
 
-    	function savePosition() {
-    		saveIconPosition()?.(get(currentOffset));
-    	}
+    	function handleMainClick(e) {
+    		if (get(isCollapsed)) {
+    			iconSettingsStore.setCollapsed(false);
 
-    	function onClick(e) {
+    			return;
+    		}
+
     		if (suppressClick) {
     			e.stopImmediatePropagation();
     			e.preventDefault();
@@ -10158,24 +10237,22 @@
     		if (onclick()) onclick()();
     	}
 
-    	// Key handler for accessibility
-    	function onKeyDown(e) {
-    		if (e.key === 'Enter' || e.key === ' ') {
-    			e.preventDefault();
-
-    			if (onclick()) onclick()();
-    		}
-    	}
-
     	// Helper for transforms
-    	function getTransform(pos, offset, s) {
+    	function getTransform(pos, offset, s, collapsed) {
     		const isMiddle = pos && pos.includes('middle');
+    		const isRight = pos && pos.includes('right');
     		let t = '';
 
+    		if (collapsed) {
+    			t = isRight
+    				? `translateX(calc(100% - ${PEEK_WIDTH}px)) `
+    				: `translateX(calc(-100% + ${PEEK_WIDTH}px)) `;
+    		}
+
     		if (isMiddle) {
-    			t = `translateY(calc(-50% + ${offset}px))`;
+    			t += `translateY(calc(-50% + ${offset}px))`;
     		} else {
-    			t = `translateY(${offset}px)`;
+    			t += `translateY(${offset}px)`;
     		}
 
     		if (s && s !== 1) {
@@ -10185,41 +10262,90 @@
     		return t;
     	}
 
-    	var $$exports = { resetPosition };
-    	var div = root$s();
+    	var div = root$r();
+    	let classes;
 
     	div.__mousedown = onMouseDown;
     	div.__touchstart = onTouchStart;
-    	div.__click = onClick;
-    	div.__keydown = onKeyDown;
 
     	let styles;
+    	var button = child(div);
 
+    	button.__click = handleMainClick;
+
+    	var span = child(button);
+    	var node = child(span);
+
+    	IconGear(node, {});
+    	reset(span);
+    	reset(button);
+
+    	var button_1 = sibling(button, 2);
+
+    	button_1.__click = handleCollapse;
+    	button_1.__mousedown = (e) => e.stopPropagation();
+    	button_1.__touchstart = (e) => e.stopPropagation();
+    	button_1.__pointerdown = (e) => e.stopPropagation();
+
+    	var text = child(button_1, true);
+
+    	reset(button_1);
+
+    	var node_1 = sibling(button_1, 2);
+
+    	{
+    		var consequent = ($$anchor) => {
+    			var button_2 = root_1$c();
+
+    			button_2.__click = (e) => {
+    				e.stopPropagation();
+    				iconSettingsStore.dismiss();
+    			};
+
+    			button_2.__mousedown = (e) => e.stopPropagation();
+    			button_2.__touchstart = (e) => e.stopPropagation();
+    			button_2.__pointerdown = (e) => e.stopPropagation();
+    			template_effect(() => set_attribute(button_2, 'data-side', get(isRight) ? 'left' : 'right'));
+    			append($$anchor, button_2);
+    		};
+
+    		if_block(node_1, ($$render) => {
+    			if (get(isCollapsed)) $$render(consequent);
+    		});
+    	}
+
+    	reset(div);
     	bind_this(div, ($$value) => settingsIconElement = $$value, () => settingsIconElement);
 
     	template_effect(
     		($0) => {
-    			set_class(div, 1, `cv-settings-icon cv-settings-${position() ?? ''} ${pulse() ? 'cv-pulse' : ''}`, 'svelte-122ln5');
-    			set_attribute(div, 'title', title());
+    			classes = set_class(div, 1, `cv-settings-icon cv-settings-${position() ?? ''} ${pulse() ? 'cv-pulse' : ''}`, 'svelte-122ln5', classes, {
+    				'cv-is-dragging': get(isDragging),
+    				'cv-is-collapsed': get(isCollapsed)
+    			});
+
     			styles = set_style(div, '', styles, $0);
+    			set_attribute(button, 'title', title());
+    			set_attribute(button, 'aria-label', get(isCollapsed) ? 'Expand settings' : 'Open Custom Views Settings');
+    			set_attribute(button_1, 'data-side', get(isRight) ? 'right' : 'left');
+    			set_text(text, get(isRight) ? '›' : '‹');
     		},
     		[
     			() => ({
     				'--cv-icon-color': iconColor(),
     				'--cv-icon-bg': backgroundColor(),
     				'--cv-icon-opacity': opacity(),
-    				transform: getTransform(position(), get(currentOffset), scale()),
-    				cursor: get(isDragging) ? 'grabbing' : 'grab'
+    				transform: getTransform(position(), get(currentOffset), scale(), get(isCollapsed)),
+    				cursor: get(isDragging) ? 'grabbing' : get(isCollapsed) ? 'pointer' : 'grab'
     			})
     		]
     	);
 
     	append($$anchor, div);
-
-    	return pop($$exports);
+    	pop();
     }
 
-    delegate(['mousedown', 'touchstart', 'click', 'keydown']);
+    delegate(['mousedown', 'touchstart', 'click', 'pointerdown']);
 
     /** @import { BlurParams, CrossfadeParams, DrawParams, FadeParams, FlyParams, ScaleParams, SlideParams, TransitionConfig } from './public' */
 
@@ -10357,23 +10483,6 @@
     	};
     }
 
-    var root$r = from_svg(`<svg><path xmlns="http://www.w3.org/2000/svg" fill-rule="evenodd" clip-rule="evenodd" d="M12 8.00002C9.79085 8.00002 7.99999 9.79088 7.99999 12C7.99999 14.2092 9.79085 16 12 16C14.2091 16 16 14.2092 16 12C16 9.79088 14.2091 8.00002 12 8.00002ZM9.99999 12C9.99999 10.8955 10.8954 10 12 10C13.1046 10 14 10.8955 14 12C14 13.1046 13.1046 14 12 14C10.8954 14 9.99999 13.1046 9.99999 12Z" fill="#0F1729"></path><path xmlns="http://www.w3.org/2000/svg" fill-rule="evenodd" clip-rule="evenodd" d="M10.7673 1.01709C10.9925 0.999829 11.2454 0.99993 11.4516 1.00001L12.5484 1.00001C12.7546 0.99993 13.0075 0.999829 13.2327 1.01709C13.4989 1.03749 13.8678 1.08936 14.2634 1.26937C14.7635 1.49689 15.1915 1.85736 15.5007 2.31147C15.7454 2.67075 15.8592 3.0255 15.9246 3.2843C15.9799 3.50334 16.0228 3.75249 16.0577 3.9557L16.1993 4.77635L16.2021 4.77788C16.2369 4.79712 16.2715 4.81659 16.306 4.8363L16.3086 4.83774L17.2455 4.49865C17.4356 4.42978 17.6693 4.34509 17.8835 4.28543C18.1371 4.2148 18.4954 4.13889 18.9216 4.17026C19.4614 4.20998 19.9803 4.39497 20.4235 4.70563C20.7734 4.95095 21.0029 5.23636 21.1546 5.4515C21.2829 5.63326 21.4103 5.84671 21.514 6.02029L22.0158 6.86003C22.1256 7.04345 22.2594 7.26713 22.3627 7.47527C22.4843 7.7203 22.6328 8.07474 22.6777 8.52067C22.7341 9.08222 22.6311 9.64831 22.3803 10.1539C22.1811 10.5554 21.9171 10.8347 21.7169 11.0212C21.5469 11.1795 21.3428 11.3417 21.1755 11.4746L20.5 12L21.1755 12.5254C21.3428 12.6584 21.5469 12.8205 21.7169 12.9789C21.9171 13.1653 22.1811 13.4446 22.3802 13.8461C22.631 14.3517 22.7341 14.9178 22.6776 15.4794C22.6328 15.9253 22.4842 16.2797 22.3626 16.5248C22.2593 16.7329 22.1255 16.9566 22.0158 17.14L21.5138 17.9799C21.4102 18.1535 21.2828 18.3668 21.1546 18.5485C21.0028 18.7637 20.7734 19.0491 20.4234 19.2944C19.9803 19.6051 19.4613 19.7901 18.9216 19.8298C18.4954 19.8612 18.1371 19.7852 17.8835 19.7146C17.6692 19.6549 17.4355 19.5703 17.2454 19.5014L16.3085 19.1623L16.306 19.1638C16.2715 19.1835 16.2369 19.2029 16.2021 19.2222L16.1993 19.2237L16.0577 20.0443C16.0228 20.2475 15.9799 20.4967 15.9246 20.7157C15.8592 20.9745 15.7454 21.3293 15.5007 21.6886C15.1915 22.1427 14.7635 22.5032 14.2634 22.7307C13.8678 22.9107 13.4989 22.9626 13.2327 22.983C13.0074 23.0002 12.7546 23.0001 12.5484 23H11.4516C11.2454 23.0001 10.9925 23.0002 10.7673 22.983C10.5011 22.9626 10.1322 22.9107 9.73655 22.7307C9.23648 22.5032 8.80849 22.1427 8.49926 21.6886C8.25461 21.3293 8.14077 20.9745 8.07542 20.7157C8.02011 20.4967 7.97723 20.2475 7.94225 20.0443L7.80068 19.2237L7.79791 19.2222C7.7631 19.2029 7.72845 19.1835 7.69396 19.1637L7.69142 19.1623L6.75458 19.5014C6.5645 19.5702 6.33078 19.6549 6.11651 19.7146C5.86288 19.7852 5.50463 19.8611 5.07841 19.8298C4.53866 19.7901 4.01971 19.6051 3.57654 19.2944C3.2266 19.0491 2.99714 18.7637 2.84539 18.5485C2.71718 18.3668 2.58974 18.1534 2.4861 17.9798L1.98418 17.14C1.87447 16.9566 1.74067 16.7329 1.63737 16.5248C1.51575 16.2797 1.36719 15.9253 1.32235 15.4794C1.26588 14.9178 1.36897 14.3517 1.61976 13.8461C1.81892 13.4446 2.08289 13.1653 2.28308 12.9789C2.45312 12.8205 2.65717 12.6584 2.82449 12.5254L3.47844 12.0054V11.9947L2.82445 11.4746C2.65712 11.3417 2.45308 11.1795 2.28304 11.0212C2.08285 10.8347 1.81888 10.5554 1.61972 10.1539C1.36893 9.64832 1.26584 9.08224 1.3223 8.52069C1.36714 8.07476 1.51571 7.72032 1.63732 7.47528C1.74062 7.26715 1.87443 7.04347 1.98414 6.86005L2.48605 6.02026C2.58969 5.84669 2.71714 5.63326 2.84534 5.45151C2.9971 5.23637 3.22655 4.95096 3.5765 4.70565C4.01966 4.39498 4.53862 4.20999 5.07837 4.17027C5.50458 4.1389 5.86284 4.21481 6.11646 4.28544C6.33072 4.34511 6.56444 4.4298 6.75451 4.49867L7.69141 4.83775L7.69394 4.8363C7.72844 4.8166 7.7631 4.79712 7.79791 4.77788L7.80068 4.77635L7.94225 3.95571C7.97723 3.7525 8.02011 3.50334 8.07542 3.2843C8.14077 3.0255 8.25461 2.67075 8.49926 2.31147C8.80849 1.85736 9.23648 1.49689 9.73655 1.26937C10.1322 1.08936 10.5011 1.03749 10.7673 1.01709ZM14.0938 4.3363C14.011 3.85634 13.9696 3.61637 13.8476 3.43717C13.7445 3.2858 13.6019 3.16564 13.4352 3.0898C13.2378 3.00002 12.9943 3.00002 12.5073 3.00002H11.4927C11.0057 3.00002 10.7621 3.00002 10.5648 3.0898C10.3981 3.16564 10.2555 3.2858 10.1524 3.43717C10.0304 3.61637 9.98895 3.85634 9.90615 4.3363L9.75012 5.24064C9.69445 5.56333 9.66662 5.72467 9.60765 5.84869C9.54975 5.97047 9.50241 6.03703 9.40636 6.13166C9.30853 6.22804 9.12753 6.3281 8.76554 6.52822C8.73884 6.54298 8.71227 6.55791 8.68582 6.57302C8.33956 6.77078 8.16643 6.86966 8.03785 6.90314C7.91158 6.93602 7.83293 6.94279 7.70289 6.93196C7.57049 6.92094 7.42216 6.86726 7.12551 6.7599L6.11194 6.39308C5.66271 6.2305 5.43809 6.14921 5.22515 6.16488C5.04524 6.17811 4.87225 6.23978 4.72453 6.34333C4.5497 6.46589 4.42715 6.67094 4.18206 7.08103L3.72269 7.84965C3.46394 8.2826 3.33456 8.49907 3.31227 8.72078C3.29345 8.90796 3.32781 9.09665 3.41141 9.26519C3.51042 9.4648 3.7078 9.62177 4.10256 9.9357L4.82745 10.5122C5.07927 10.7124 5.20518 10.8126 5.28411 10.9199C5.36944 11.036 5.40583 11.1114 5.44354 11.2504C5.47844 11.379 5.47844 11.586 5.47844 12C5.47844 12.414 5.47844 12.621 5.44354 12.7497C5.40582 12.8887 5.36944 12.9641 5.28413 13.0801C5.20518 13.1875 5.07927 13.2876 4.82743 13.4879L4.10261 14.0643C3.70785 14.3783 3.51047 14.5352 3.41145 14.7349C3.32785 14.9034 3.29349 15.0921 3.31231 15.2793C3.33461 15.501 3.46398 15.7174 3.72273 16.1504L4.1821 16.919C4.4272 17.3291 4.54974 17.5342 4.72457 17.6567C4.8723 17.7603 5.04528 17.8219 5.2252 17.8352C5.43813 17.8508 5.66275 17.7695 6.11199 17.607L7.12553 17.2402C7.42216 17.1328 7.5705 17.0791 7.7029 17.0681C7.83294 17.0573 7.91159 17.064 8.03786 17.0969C8.16644 17.1304 8.33956 17.2293 8.68582 17.427C8.71228 17.4421 8.73885 17.4571 8.76554 17.4718C9.12753 17.6719 9.30853 17.772 9.40635 17.8684C9.50241 17.963 9.54975 18.0296 9.60765 18.1514C9.66662 18.2754 9.69445 18.4367 9.75012 18.7594L9.90615 19.6637C9.98895 20.1437 10.0304 20.3837 10.1524 20.5629C10.2555 20.7142 10.3981 20.8344 10.5648 20.9102C10.7621 21 11.0057 21 11.4927 21H12.5073C12.9943 21 13.2378 21 13.4352 20.9102C13.6019 20.8344 13.7445 20.7142 13.8476 20.5629C13.9696 20.3837 14.011 20.1437 14.0938 19.6637L14.2499 18.7594C14.3055 18.4367 14.3334 18.2754 14.3923 18.1514C14.4502 18.0296 14.4976 17.963 14.5936 17.8684C14.6915 17.772 14.8725 17.6719 15.2344 17.4718C15.2611 17.4571 15.2877 17.4421 15.3141 17.427C15.6604 17.2293 15.8335 17.1304 15.9621 17.0969C16.0884 17.064 16.167 17.0573 16.2971 17.0681C16.4295 17.0791 16.5778 17.1328 16.8744 17.2402L17.888 17.607C18.3372 17.7696 18.5619 17.8509 18.7748 17.8352C18.9547 17.8219 19.1277 17.7603 19.2754 17.6567C19.4502 17.5342 19.5728 17.3291 19.8179 16.919L20.2773 16.1504C20.536 15.7175 20.6654 15.501 20.6877 15.2793C20.7065 15.0921 20.6721 14.9034 20.5885 14.7349C20.4895 14.5353 20.2921 14.3783 19.8974 14.0643L19.1726 13.4879C18.9207 13.2876 18.7948 13.1875 18.7159 13.0801C18.6306 12.9641 18.5942 12.8887 18.5564 12.7497C18.5215 12.6211 18.5215 12.414 18.5215 12C18.5215 11.586 18.5215 11.379 18.5564 11.2504C18.5942 11.1114 18.6306 11.036 18.7159 10.9199C18.7948 10.8126 18.9207 10.7124 19.1725 10.5122L19.8974 9.9357C20.2922 9.62176 20.4896 9.46479 20.5886 9.26517C20.6722 9.09664 20.7065 8.90795 20.6877 8.72076C20.6654 8.49906 20.5361 8.28259 20.2773 7.84964L19.8179 7.08102C19.5728 6.67093 19.4503 6.46588 19.2755 6.34332C19.1277 6.23977 18.9548 6.1781 18.7748 6.16486C18.5619 6.14919 18.3373 6.23048 17.888 6.39307L16.8745 6.75989C16.5778 6.86725 16.4295 6.92093 16.2971 6.93195C16.167 6.94278 16.0884 6.93601 15.9621 6.90313C15.8335 6.86965 15.6604 6.77077 15.3142 6.57302C15.2877 6.55791 15.2611 6.54298 15.2345 6.52822C14.8725 6.3281 14.6915 6.22804 14.5936 6.13166C14.4976 6.03703 14.4502 5.97047 14.3923 5.84869C14.3334 5.72467 14.3055 5.56332 14.2499 5.24064L14.0938 4.3363Z" fill="#0F1729"></path></svg>`);
-
-    function IconGear($$anchor, $$props) {
-    	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
-    	var svg = root$r();
-
-    	attribute_effect(svg, () => ({
-    		class: 'cv-modal-icon-svg',
-    		fill: 'currentColor',
-    		viewBox: '0 0 24 24',
-    		xmlns: 'http://www.w3.org/2000/svg',
-    		...rest
-    	}));
-
-    	append($$anchor, svg);
-    }
-
     var root$q = from_svg(`<svg><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>`);
 
     function IconClose($$anchor, $$props) {
@@ -10493,41 +10602,6 @@
     		width: '18',
     		height: '18',
     		viewBox: '2 2 22 22',
-    		fill: 'currentColor',
-    		...rest
-    	}));
-
-    	append($$anchor, svg);
-    }
-
-    var root$j = from_svg(`<svg><path d="M22.719 12A10.719 10.719 0 0 1 1.28 12h.838a9.916 9.916 0 1 0 1.373-5H8v1H2V2h1v4.2A10.71 10.71 0 0 1 22.719 12z"></path><path fill="none" d="M0 0h24v24H0z"></path></svg>`);
-
-    function IconReset($$anchor, $$props) {
-    	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
-    	var svg = root$j();
-
-    	attribute_effect(svg, () => ({
-    		class: 'cv-btn-icon',
-    		fill: 'currentColor',
-    		viewBox: '0 0 24 24',
-    		xmlns: 'http://www.w3.org/2000/svg',
-    		...rest
-    	}));
-
-    	append($$anchor, svg);
-    }
-
-    var root$i = from_svg(`<svg><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"></path></svg>`);
-
-    function IconGitHub($$anchor, $$props) {
-    	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
-    	var svg = root$i();
-
-    	attribute_effect(svg, () => ({
-    		viewBox: '0 0 98 96',
-    		width: '16',
-    		height: '16',
-    		xmlns: 'http://www.w3.org/2000/svg',
     		fill: 'currentColor',
     		...rest
     	}));
@@ -10972,40 +11046,44 @@
         return highestVisibleEl;
     }
     /**
-     * Scrolls the page to align the element to the top of the viewport,
-     * accounting for fixed/sticky headers and adding some padding.
-     * @param element The element to scroll to.
+     * Adjusts the scroll position to keep a specific element in the same visual location.
+     * Useful when content additions/removals above might cause jumps.
      */
-    function scrollToElement(element) {
-        const headerOffset = getScrollTopOffset();
-        const PADDING_BELOW_HEADER = 20;
-        const targetElementRect = element.getBoundingClientRect();
-        const scrollTargetY = targetElementRect.top + window.scrollY;
-        const finalScrollY = scrollTargetY - headerOffset - PADDING_BELOW_HEADER;
-        window.scrollTo({
-            top: finalScrollY,
-            behavior: 'smooth',
+    function handleScrollAnchor(scrollAnchor) {
+        requestAnimationFrame(() => {
+            const { element, top: initialTop } = scrollAnchor;
+            // Check if element is still in document
+            if (!element || !document.contains(element))
+                return;
+            const newTop = element.getBoundingClientRect().top;
+            const scrollDelta = newTop - initialTop;
+            // Only scroll if there's a noticeable change
+            if (Math.abs(scrollDelta) > 1) {
+                window.scrollBy({
+                    top: scrollDelta,
+                    behavior: 'instant',
+                });
+            }
         });
     }
 
-    var root_1$a = from_html(`<p class="description svelte-gwkhja"> </p>`);
-    var root$h = from_html(`<div class="card svelte-gwkhja"><div class="content svelte-gwkhja"><div><p class="title svelte-gwkhja"> </p> <!></div> <div class="radios svelte-gwkhja"><label class="radio-label svelte-gwkhja" title="Hide"><input class="toggle-input svelte-gwkhja" type="radio"/> <span>Hide</span></label> <label class="radio-label svelte-gwkhja" title="Peek"><input class="toggle-input svelte-gwkhja" type="radio"/> <span>Peek</span></label> <label class="radio-label svelte-gwkhja" title="Show"><input class="toggle-input svelte-gwkhja" type="radio"/> <span>Show</span></label></div></div></div>`);
+    var root_1$b = from_html(`<p class="description svelte-gwkhja"> </p>`);
+    var root_2$9 = from_html(`<button> </button>`);
+    var root$j = from_html(`<div class="card svelte-gwkhja"><div class="content svelte-gwkhja"><div><p class="title svelte-gwkhja"> </p> <!></div> <div class="segmented svelte-gwkhja" role="group" aria-label="Visibility"></div></div></div>`);
 
-    const $$css$i = {
+    const $$css$k = {
     	hash: 'svelte-gwkhja',
-    	code: '.card.svelte-gwkhja {background:var(--cv-bg);border:1px solid var(--cv-border);border-radius:0.5rem;}.content.svelte-gwkhja {display:flex;align-items:center;justify-content:space-between;padding:0.75rem;}.title.svelte-gwkhja {font-weight:500;font-size:0.875rem;color:var(--cv-text);margin:0;}.description.svelte-gwkhja {font-size:0.75rem;color:var(--cv-text-secondary);margin:0.125rem 0 0 0;}.radios.svelte-gwkhja {display:flex;gap:8px;}.radio-label.svelte-gwkhja {display:flex;align-items:center;gap:4px;font-size:0.85rem;cursor:pointer;color:var(--cv-text);}.toggle-input.svelte-gwkhja {margin:0;opacity:1;width:auto;height:auto;}'
+    	code: '.card.svelte-gwkhja {background:var(--cv-bg);border:1px solid var(--cv-border);border-radius:var(--cv-card-radius, 0.5rem);transition:background 0.15s ease;}.card.svelte-gwkhja:hover {background:var(--cv-bg-hover);}.content.svelte-gwkhja {display:flex;align-items:center;justify-content:space-between;padding:0.75rem;}.title.svelte-gwkhja {font-weight:500;font-size:0.875rem;color:var(--cv-text);margin:0;}.description.svelte-gwkhja {font-size:0.75rem;color:var(--cv-text-secondary);margin:0.125rem 0 0 0;}.segmented.svelte-gwkhja {display:flex;border:1px solid var(--cv-border);border-radius:0.375rem;overflow:hidden;flex-shrink:0;}.segment-btn.svelte-gwkhja {background:transparent;border:none;border-left:1px solid var(--cv-border);padding:0.3rem 0.6rem;font-size:0.8rem;font-weight:500;color:var(--cv-text-secondary);cursor:pointer;transition:background 0.15s ease, color 0.15s ease;font-family:inherit;line-height:1;}.segment-btn.svelte-gwkhja:first-child {border-left:none;}.segment-btn.svelte-gwkhja:hover:not(.active) {background:var(--cv-bg-hover);color:var(--cv-text);}.segment-btn.active.svelte-gwkhja {background:var(--cv-primary);color:white;box-shadow:0 1px 3px rgba(0, 0, 0, 0.15);}'
     };
 
     function ToggleItem($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$i);
-
-    	const binding_group = [];
+    	append_styles$1($$anchor, $$css$k);
 
     	let value = prop($$props, 'value', 15, 'show'),
     		onchange = prop($$props, 'onchange', 3, () => {});
 
-    	var div = root$h();
+    	var div = root$j();
     	var div_1 = child(div);
     	var div_2 = child(div_1);
     	var p = child(div_2);
@@ -11017,7 +11095,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var p_1 = root_1$a();
+    			var p_1 = root_1$b();
     			var text_1 = child(p_1, true);
 
     			reset(p_1);
@@ -11033,64 +11111,53 @@
     	reset(div_2);
 
     	var div_3 = sibling(div_2, 2);
-    	var label = child(div_3);
-    	var input = child(label);
 
-    	remove_input_defaults(input);
-    	input.__change = () => onchange()({ toggleId: $$props.toggle.toggleId, value: 'hide' });
-    	input.value = input.__value = 'hide';
-    	next(2);
-    	reset(label);
+    	each(div_3, 20, () => ['hide', 'peek', 'show'], (option) => option, ($$anchor, option) => {
+    		var button = root_2$9();
 
-    	var label_1 = sibling(label, 2);
-    	var input_1 = child(label_1);
+    		button.__click = () => {
+    			value(option);
+    			onchange()({ toggleId: $$props.toggle.toggleId, value: option });
+    		};
 
-    	remove_input_defaults(input_1);
-    	input_1.__change = () => onchange()({ toggleId: $$props.toggle.toggleId, value: 'peek' });
-    	input_1.value = input_1.__value = 'peek';
-    	next(2);
-    	reset(label_1);
+    		var text_2 = child(button, true);
 
-    	var label_2 = sibling(label_1, 2);
-    	var input_2 = child(label_2);
+    		reset(button);
 
-    	remove_input_defaults(input_2);
-    	input_2.__change = () => onchange()({ toggleId: $$props.toggle.toggleId, value: 'show' });
-    	input_2.value = input_2.__value = 'show';
-    	next(2);
-    	reset(label_2);
+    		template_effect(
+    			($0) => {
+    				set_class(button, 1, `segment-btn ${value() === option ? 'active' : ''}`, 'svelte-gwkhja');
+    				set_attribute(button, 'aria-pressed', value() === option);
+    				set_text(text_2, $0);
+    			},
+    			[() => option.charAt(0).toUpperCase() + option.slice(1)]
+    		);
+
+    		append($$anchor, button);
+    	});
+
     	reset(div_3);
     	reset(div_1);
     	reset(div);
-
-    	template_effect(() => {
-    		set_text(text, $$props.toggle.label || $$props.toggle.toggleId);
-    		set_attribute(input, 'name', `cv-toggle-${$$props.toggle.toggleId ?? ''}`);
-    		set_attribute(input_1, 'name', `cv-toggle-${$$props.toggle.toggleId ?? ''}`);
-    		set_attribute(input_2, 'name', `cv-toggle-${$$props.toggle.toggleId ?? ''}`);
-    	});
-
-    	bind_group(binding_group, [], input, value, value);
-    	bind_group(binding_group, [], input_1, value, value);
-    	bind_group(binding_group, [], input_2, value, value);
+    	template_effect(() => set_text(text, $$props.toggle.label || $$props.toggle.toggleId));
     	append($$anchor, div);
     	pop();
     }
 
-    delegate(['change']);
+    delegate(['click']);
 
-    var root_1$9 = from_html(`<p class="description svelte-uub3h8"> </p>`);
-    var root_2$4 = from_html(`<option> </option>`);
-    var root$g = from_html(`<div class="root svelte-uub3h8"><div class="header svelte-uub3h8"><label class="label svelte-uub3h8"> </label> <!></div> <select class="select svelte-uub3h8"></select></div>`);
+    var root_1$a = from_html(`<p class="description svelte-uub3h8"> </p>`);
+    var root_2$8 = from_html(`<option> </option>`);
+    var root$i = from_html(`<div class="root svelte-uub3h8"><div class="header svelte-uub3h8"><label class="label svelte-uub3h8"> </label> <!></div> <select class="select svelte-uub3h8"></select></div>`);
 
-    const $$css$h = {
+    const $$css$j = {
     	hash: 'svelte-uub3h8',
-    	code: '.root.svelte-uub3h8 {display:flex;flex-direction:column;gap:0.75rem;padding:0.75rem;background:var(--cv-bg);border:1px solid var(--cv-border);border-radius:0.5rem;}\n\n  /* Remove special handling for last child since they are now separate cards */.root.svelte-uub3h8:last-child {border-bottom:1px solid var(--cv-border);}.header.svelte-uub3h8 {display:flex;flex-direction:column;gap:0.25rem;}.label.svelte-uub3h8 {font-size:0.875rem;color:var(--cv-text);margin:0;line-height:1.4;font-weight:500;display:block;cursor:pointer;}.description.svelte-uub3h8 {font-size:0.75rem;color:var(--cv-text-secondary);margin:0;line-height:1.4;}.select.svelte-uub3h8 {width:100%;border-radius:0.5rem;background:var(--cv-input-bg);border:1px solid var(--cv-input-border);color:var(--cv-text);padding:0.5rem 0.75rem;font-size:0.875rem;cursor:pointer;transition:all 0.15s ease;font-family:inherit;}.select.svelte-uub3h8:hover {border-color:var(--cv-text-secondary);}.select.svelte-uub3h8:focus {outline:none;border-color:var(--cv-primary);box-shadow:0 0 0 2px var(--cv-focus-ring);}'
+    	code: '.root.svelte-uub3h8 {display:flex;flex-direction:column;gap:0.5rem;padding:0.75rem;background:var(--cv-bg);border:1px solid var(--cv-border);border-radius:var(--cv-card-radius, 0.5rem);transition:background 0.15s ease;}.root.svelte-uub3h8:hover {background:var(--cv-bg-hover);}\n\n  /* Remove special handling for last child since they are now separate cards */.root.svelte-uub3h8:last-child {border-bottom:1px solid var(--cv-border);}.header.svelte-uub3h8 {display:flex;flex-direction:column;gap:0.25rem;}.label.svelte-uub3h8 {font-size:0.875rem;color:var(--cv-text);margin:0;line-height:1.4;font-weight:500;display:block;cursor:pointer;}.description.svelte-uub3h8 {font-size:0.75rem;color:var(--cv-text-secondary);margin:0;line-height:1.4;}.select.svelte-uub3h8 {width:100%;border-radius:0.5rem;background:var(--cv-input-bg);border:1px solid var(--cv-input-border);color:var(--cv-text);padding:0.5rem 0.75rem;font-size:0.875rem;cursor:pointer;transition:all 0.15s ease;font-family:inherit;}.select.svelte-uub3h8:hover {border-color:var(--cv-text-secondary);}.select.svelte-uub3h8:focus {outline:none;border-color:var(--cv-primary);box-shadow:0 0 0 2px var(--cv-focus-ring);}'
     };
 
     function TabGroupItem($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$h);
+    	append_styles$1($$anchor, $$css$j);
 
     	let activeTabId = prop($$props, 'activeTabId', 15, ''),
     		onchange = prop($$props, 'onchange', 3, () => {});
@@ -11102,7 +11169,7 @@
     		onchange()({ groupId: $$props.group.groupId, tabId: activeTabId() });
     	}
 
-    	var div = root$g();
+    	var div = root$i();
     	var div_1 = child(div);
     	var label = child(div_1);
     	var text = child(label, true);
@@ -11113,7 +11180,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var p = root_1$9();
+    			var p = root_1$a();
     			var text_1 = child(p, true);
 
     			reset(p);
@@ -11133,7 +11200,7 @@
     	select.__change = onChange;
 
     	each(select, 21, () => $$props.group.tabs, (tab) => tab.tabId, ($$anchor, tab) => {
-    		var option = root_2$4();
+    		var option = root_2$8();
     		var text_2 = child(option, true);
 
     		reset(option);
@@ -11177,16 +11244,16 @@
 
     delegate(['change']);
 
-    var root$f = from_html(`<div class="placeholder-item svelte-1vp05mb"><label class="placeholder-label svelte-1vp05mb"> </label> <input class="placeholder-input svelte-1vp05mb" type="text"/></div>`);
+    var root$h = from_html(`<div class="placeholder-item svelte-1vp05mb"><label class="placeholder-label svelte-1vp05mb"> </label> <input class="placeholder-input svelte-1vp05mb" type="text"/></div>`);
 
-    const $$css$g = {
+    const $$css$i = {
     	hash: 'svelte-1vp05mb',
-    	code: '.placeholder-item.svelte-1vp05mb {display:flex;flex-direction:column;gap:0.25rem;}.placeholder-label.svelte-1vp05mb {font-size:0.85rem;font-weight:500;color:var(--cv-text);}.placeholder-input.svelte-1vp05mb {padding:0.5rem 0.75rem;border:1px solid var(--cv-input-border);border-radius:0.375rem;font-size:0.9rem;transition:border-color 0.2s;background:var(--cv-input-bg);color:var(--cv-text);}.placeholder-input.svelte-1vp05mb:focus {outline:none;border-color:var(--cv-primary);box-shadow:0 0 0 2px var(--cv-focus-ring);}'
+    	code: '.placeholder-item.svelte-1vp05mb {display:flex;flex-direction:column;gap:0.25rem;}.placeholder-label.svelte-1vp05mb {font-size:0.85rem;font-weight:500;color:var(--cv-text);}.placeholder-input.svelte-1vp05mb {padding:0.5rem 0.75rem;border:1px solid var(--cv-input-border);border-radius:var(--cv-card-radius, 0.5rem);font-size:0.9rem;transition:border-color 0.2s;background:var(--cv-input-bg);color:var(--cv-text);}.placeholder-input.svelte-1vp05mb:focus {outline:none;border-color:var(--cv-primary);box-shadow:0 0 0 2px var(--cv-focus-ring);}'
     };
 
     function PlaceholderItem($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$g);
+    	append_styles$1($$anchor, $$css$i);
 
     	let value = prop($$props, 'value', 15, ''),
     		onchange = prop($$props, 'onchange', 3, () => {});
@@ -11199,7 +11266,7 @@
     	}
 
     	const sanitizedId = user_derived(() => `cv-placeholder-${$$props.definition.name.replace(/[^a-zA-Z0-9-_]/g, '-')}`);
-    	var div = root$f();
+    	var div = root$h();
     	var label = child(div);
     	var text = child(label, true);
 
@@ -11266,34 +11333,33 @@
         }
     }
 
-    var root_1$8 = from_html(`<button>Customize</button>`);
-    var root_3$2 = from_html(`<p class="description svelte-16uy9h6"> </p>`);
-    var root_5 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Toggles</div> <div class="toggles-container svelte-16uy9h6"></div></div>`);
+    var root_1$9 = from_html(`<button>Customize</button>`);
+    var root_3$5 = from_html(`<p class="description svelte-16uy9h6"> </p>`);
+    var root_5$1 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Toggles</div> <div class="toggles-container svelte-16uy9h6"></div></div>`);
     var root_7 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Placeholders</div> <div class="placeholders-container svelte-16uy9h6"></div></div>`);
     var root_9 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Tab Groups</div> <div class="tabgroups-container svelte-16uy9h6"><div class="tabgroup-card header-card svelte-16uy9h6" role="group"><div class="tabgroup-row svelte-16uy9h6"><div class="logo-box svelte-16uy9h6" id="cv-nav-icon-box"><div class="nav-icon svelte-16uy9h6"><!></div></div> <div class="tabgroup-info svelte-16uy9h6"><div class="tabgroup-title-container"><p class="tabgroup-title svelte-16uy9h6">Show only the selected tab</p></div> <p class="tabgroup-description svelte-16uy9h6">Hide the navigation headers</p></div> <label class="toggle-switch nav-toggle svelte-16uy9h6"><input class="nav-pref-input svelte-16uy9h6" type="checkbox" aria-label="Show only the selected tab"/> <span class="switch-bg svelte-16uy9h6"></span> <span class="switch-knob svelte-16uy9h6"></span></label></div></div> <div class="tab-groups-list svelte-16uy9h6"></div></div></div>`);
-    var root_4 = from_html(`<!> <!> <!>`, 1);
-    var root_2$3 = from_html(`<div class="tab-content active svelte-16uy9h6"><!> <!></div>`);
+    var root_4$2 = from_html(`<!> <!> <!>`, 1);
+    var root_2$7 = from_html(`<div class="tab-content active svelte-16uy9h6"><!> <!></div>`);
     var root_16 = from_html(`<button class="share-action-btn copy-url-btn svelte-16uy9h6"><span class="btn-icon svelte-16uy9h6"><!></span> <span><!></span></button>`);
 
     var root_15 = from_html(`<div class="tab-content active svelte-16uy9h6"><div class="share-content svelte-16uy9h6"><div class="share-instruction svelte-16uy9h6">Create a shareable link for your current customization, or select specific parts of
               the page to share.</div> <button class="share-action-btn primary start-share-btn svelte-16uy9h6"><span class="btn-icon svelte-16uy9h6"><!></span> <span>Select elements to share</span></button> <!></div></div>`);
 
-    var root_21 = from_html(`<button class="reset-btn svelte-16uy9h6" title="Reset to Default"><span><!></span> <span>Reset</span></button>`);
+    var root_21 = from_html(`<button class="reset-btn svelte-16uy9h6" title="Reset to Default">Reset</button>`);
     var root_22 = from_html(`<div></div>`);
-    var root$e = from_html(`<div class="modal-overlay svelte-16uy9h6" role="presentation"><div class="modal-box cv-custom-state-modal svelte-16uy9h6" role="dialog" aria-modal="true"><header class="header svelte-16uy9h6"><div class="header-content svelte-16uy9h6"><div class="modal-icon svelte-16uy9h6"><!></div> <div class="title svelte-16uy9h6"> </div></div> <button class="close-btn svelte-16uy9h6" aria-label="Close modal"><!></button></header> <main class="main svelte-16uy9h6"><div class="tabs svelte-16uy9h6"><!> <button>Share</button></div> <!></main> <footer class="footer svelte-16uy9h6"><!> <a href="https://github.com/custardui/custardui" target="_blank" class="footer-link svelte-16uy9h6"><!> <span>View on GitHub</span></a> <button class="done-btn svelte-16uy9h6">Done</button></footer></div></div>`);
+    var root$g = from_html(`<div class="modal-overlay svelte-16uy9h6" role="presentation"><div class="modal-box cv-custom-state-modal svelte-16uy9h6" role="dialog" aria-modal="true"><header class="header svelte-16uy9h6"><div class="header-content svelte-16uy9h6"><div class="modal-icon svelte-16uy9h6"><!></div> <div class="title svelte-16uy9h6"> </div></div> <button class="close-btn svelte-16uy9h6" aria-label="Close modal"><!></button></header> <main class="main svelte-16uy9h6"><div class="tabs svelte-16uy9h6"><!> <button>Share</button></div> <!></main> <footer class="footer svelte-16uy9h6"><!> <a href="https://custardui.js.org" target="_blank" rel="noopener noreferrer" class="footer-link svelte-16uy9h6">custardui.js.org</a> <button class="done-btn svelte-16uy9h6">Done</button></footer></div></div>`);
 
-    const $$css$f = {
+    const $$css$h = {
     	hash: 'svelte-16uy9h6',
-    	code: '\n  /* Modal Overlay & Modal Frame */.modal-overlay.svelte-16uy9h6 {position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0, 0, 0, 0.5);display:flex;align-items:center;justify-content:center;z-index:10002;}.modal-box.svelte-16uy9h6 {background:var(--cv-bg);border-radius:0.75rem;box-shadow:0 25px 50px -12px var(--cv-shadow);max-width:32rem;width:90vw;max-height:80vh;display:flex;flex-direction:column;}.header.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;padding:0.5rem 1rem;border-bottom:1px solid var(--cv-border);}.header-content.svelte-16uy9h6 {display:flex;align-items:center;gap:0.75rem;}.modal-icon.svelte-16uy9h6 {position:relative;width:1rem;height:1rem;display:flex;align-items:center;justify-content:center;border-radius:9999px;color:var(--cv-text);}.modal-icon.svelte-16uy9h6 svg {fill:currentColor;}.title.svelte-16uy9h6 {font-size:1.125rem;font-weight:bold;color:var(--cv-text);margin:0;}.close-btn.svelte-16uy9h6 {width:2rem;height:2rem;display:flex;align-items:center;justify-content:center;border-radius:9999px;background:transparent;border:none;color:var(--cv-text-secondary);cursor:pointer;transition:all 0.2s ease;}.close-btn.svelte-16uy9h6:hover {background:rgba(62, 132, 244, 0.1);color:var(--cv-primary);}.main.svelte-16uy9h6 {padding:1rem;flex:1;display:flex;flex-direction:column;overflow-y:auto;max-height:calc(80vh - 8rem);min-height:var(--cv-modal-min-height, 20rem);}.description.svelte-16uy9h6 {font-size:0.875rem;color:var(--cv-text);margin:0 0 1rem 0;line-height:1.4;}\n\n  /* Tabs */.tabs.svelte-16uy9h6 {display:flex;margin-bottom:1rem;border-bottom:2px solid var(--cv-border);}.tab.svelte-16uy9h6 {background:transparent;border:none;padding:0.5rem 1rem;font-size:0.9rem;font-weight:600;color:var(--cv-text-secondary);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;}.tab.active.svelte-16uy9h6 {color:var(--cv-primary);border-bottom-color:var(--cv-primary);}.tab-content.svelte-16uy9h6 {display:none;}.tab-content.active.svelte-16uy9h6 {display:block;}\n\n  /* Section Styling */.section.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;margin-bottom:1.5rem;}.section-heading.svelte-16uy9h6 {font-size:1rem;font-weight:bold;color:var(--cv-text);margin:0;}.toggles-container.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.5rem;overflow:hidden;}\n\n  /* Tab Groups Section specific */.tabgroups-container.svelte-16uy9h6 {border-radius:0.5rem;}\n\n  /* Nav Toggle Card */.tabgroup-card.svelte-16uy9h6 {background:var(--cv-bg);border-bottom:1px solid var(--cv-border);}.tabgroup-card.header-card.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;padding:0.75rem;border:1px solid var(--cv-border);border-radius:0.5rem;margin-bottom:0.75rem;}.tabgroup-row.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;width:100%;gap:1rem;}.logo-box.svelte-16uy9h6 {width:3rem;height:3rem;background:var(--cv-modal-icon-bg);border-radius:0.5rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;}.nav-icon.svelte-16uy9h6 {width:2rem;height:2rem;color:var(--cv-text);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:color 0.2s ease;}.tabgroup-info.svelte-16uy9h6 {flex:1;display:flex;flex-direction:column;gap:0.25rem;}.tabgroup-title.svelte-16uy9h6 {font-weight:500;font-size:0.875rem;color:var(--cv-text);margin:0 0 0 0;}.tabgroup-description.svelte-16uy9h6 {font-size:0.75rem;color:var(--cv-text-secondary);margin:0;line-height:1.3;}\n\n  /* Toggle Switch */.toggle-switch.svelte-16uy9h6 {position:relative;display:inline-flex;align-items:center;width:44px;height:24px;background:var(--cv-switch-bg);border-radius:9999px;padding:2px;box-sizing:border-box;cursor:pointer;transition:background-color 0.2s ease;border:none;}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6) {display:none;}.toggle-switch.svelte-16uy9h6 .switch-bg:where(.svelte-16uy9h6) {position:absolute;inset:0;border-radius:9999px;background:var(--cv-switch-bg);transition:background-color 0.2s ease;pointer-events:none;}.toggle-switch.svelte-16uy9h6 .switch-knob:where(.svelte-16uy9h6) {position:relative;width:20px;height:20px;background:var(--cv-switch-knob);border-radius:50%;box-shadow:0 1px 2px rgba(0, 0, 0, 0.1);transition:transform 0.2s ease;transform:translateX(0);}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6):checked ~ .switch-knob:where(.svelte-16uy9h6) {transform:translateX(20px);}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6):checked ~ .switch-bg:where(.svelte-16uy9h6) {background:var(--cv-primary);}\n\n  /* Tab Groups List */.tab-groups-list.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;}\n\n  /* Footer */.footer.svelte-16uy9h6 {padding:1rem;border-top:1px solid var(--cv-border);display:flex;align-items:center;justify-content:space-between;background:var(--cv-bg);border-bottom-left-radius:0.75rem;border-bottom-right-radius:0.75rem;}.footer-link.svelte-16uy9h6 {display:flex;align-items:center;gap:0.5rem;color:var(--cv-text-secondary);text-decoration:none;font-size:0.875rem;font-weight:500;transition:color 0.15s ease;}.footer-link.svelte-16uy9h6:hover {color:var(--cv-text);}.reset-btn.svelte-16uy9h6 {display:flex;align-items:center;gap:0.5rem;background:var(--cv-bg);border:1px solid var(--cv-border);font-size:0.875rem;font-weight:500;color:var(--cv-danger);cursor:pointer;padding:0.5rem 0.75rem;border-radius:0.5rem;transition:all 0.2s ease;box-shadow:0 1px 2px rgba(0, 0, 0, 0.05);}.reset-btn.svelte-16uy9h6:hover {background:var(--cv-danger-bg);border-color:var(--cv-danger);box-shadow:0 2px 4px rgba(0, 0, 0, 0.05);}.done-btn.svelte-16uy9h6 {background:var(--cv-primary);color:white;border:none;padding:0.5rem 1rem;border-radius:0.375rem;font-weight:600;font-size:0.875rem;cursor:pointer;transition:background-color 0.15s ease;}.done-btn.svelte-16uy9h6:hover {background:var(--cv-primary-hover);}.reset-btn-icon.svelte-16uy9h6 {display:flex;align-items:center;width:1.25rem;height:1.25rem;}.spinning {\n    animation: svelte-16uy9h6-spin 1s linear infinite;}\n\n  @keyframes svelte-16uy9h6-spin {\n    from {\n      transform: rotate(0deg);\n    }\n    to {\n      transform: rotate(360deg);\n    }\n  }\n\n  /* Share Tab Styles */.share-content.svelte-16uy9h6 {display:flex;flex-direction:column;gap:1rem;align-items:center;text-align:center;padding:1rem 0;}.share-instruction.svelte-16uy9h6 {font-size:0.95rem;color:var(--cv-text-secondary);margin-bottom:0.5rem;}.share-action-btn.svelte-16uy9h6 {display:flex;align-items:center;justify-content:center;gap:0.75rem;width:100%;max-width:320px;padding:0.75rem 1rem;border-radius:0.5rem;font-weight:500;font-size:0.95rem;cursor:pointer;transition:all 0.2s ease;border:1px solid var(--cv-border);background:var(--cv-bg);color:var(--cv-text);}.share-action-btn.svelte-16uy9h6:hover {border-color:var(--cv-primary);color:var(--cv-primary);background:var(--cv-bg-hover);}.share-action-btn.primary.svelte-16uy9h6 {background:var(--cv-primary);border-color:var(--cv-primary);color:white;}.share-action-btn.primary.svelte-16uy9h6:hover {background:var(--cv-primary-hover);border-color:var(--cv-primary-hover);}.btn-icon.svelte-16uy9h6 {display:flex;align-items:center;justify-content:center;width:1.25rem;height:1.25rem;}\n\n  /* Placeholder Inputs */.placeholders-container.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;}'
+    	code: '\n  /* Modal Overlay & Modal Frame */.modal-overlay.svelte-16uy9h6 {position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0, 0, 0, 0.5);display:flex;align-items:center;justify-content:center;z-index:10002;}.modal-box.svelte-16uy9h6 {background:var(--cv-bg);border-radius:var(--cv-modal-radius, 0.75rem);box-shadow:0 25px 50px -12px var(--cv-shadow);max-width:32rem;width:90vw;max-height:80vh;display:flex;flex-direction:column;}.header.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;padding:0.5rem 1rem;border-bottom:1px solid var(--cv-border);}.header-content.svelte-16uy9h6 {display:flex;align-items:center;gap:0.75rem;}.modal-icon.svelte-16uy9h6 {position:relative;width:1rem;height:1rem;display:flex;align-items:center;justify-content:center;border-radius:9999px;color:var(--cv-text);}.modal-icon.svelte-16uy9h6 svg {fill:currentColor;}.title.svelte-16uy9h6 {font-size:1.125rem;font-weight:bold;color:var(--cv-text);margin:0;}.close-btn.svelte-16uy9h6 {width:2rem;height:2rem;display:flex;align-items:center;justify-content:center;border-radius:9999px;background:transparent;border:none;color:var(--cv-text-secondary);cursor:pointer;transition:all 0.2s ease;}.close-btn.svelte-16uy9h6:hover {background:rgba(62, 132, 244, 0.1);color:var(--cv-primary);}.main.svelte-16uy9h6 {padding:1rem;flex:1;display:flex;flex-direction:column;overflow-y:auto;max-height:calc(80vh - 8rem);min-height:var(--cv-modal-min-height, 20rem);}.description.svelte-16uy9h6 {font-size:0.875rem;color:var(--cv-text);margin:0 0 1rem 0;line-height:1.4;}\n\n  /* Tabs */.tabs.svelte-16uy9h6 {display:flex;margin-bottom:1rem;border-bottom:2px solid var(--cv-border);}.tab.svelte-16uy9h6 {background:transparent;border:none;padding:0.5rem 1rem;font-size:0.9rem;font-weight:600;color:var(--cv-text-secondary);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;}.tab.active.svelte-16uy9h6 {color:var(--cv-primary);border-bottom-color:var(--cv-primary);}.tab-content.svelte-16uy9h6 {display:none;}.tab-content.active.svelte-16uy9h6 {display:block;}\n\n  /* Section Styling */.section.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;margin-bottom:1.5rem;}.section-heading.svelte-16uy9h6 {font-size:0.7rem;font-weight:600;color:var(--cv-text-secondary);text-transform:var(--cv-section-label-transform, uppercase);letter-spacing:0.08em;margin:0;}.toggles-container.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.5rem;overflow:hidden;}\n\n  /* Tab Groups Section specific */.tabgroups-container.svelte-16uy9h6 {border-radius:0.5rem;}\n\n  /* Nav Toggle Card */.tabgroup-card.svelte-16uy9h6 {background:var(--cv-bg);border-bottom:1px solid var(--cv-border);}.tabgroup-card.header-card.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;padding:0.75rem;border:1px solid var(--cv-border);border-radius:0.5rem;margin-bottom:0.75rem;}.tabgroup-row.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;width:100%;gap:1rem;}.logo-box.svelte-16uy9h6 {width:3rem;height:3rem;background:var(--cv-modal-icon-bg);border-radius:0.5rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;}.nav-icon.svelte-16uy9h6 {width:2rem;height:2rem;color:var(--cv-text);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:color 0.2s ease;}.tabgroup-info.svelte-16uy9h6 {flex:1;display:flex;flex-direction:column;gap:0.25rem;}.tabgroup-title.svelte-16uy9h6 {font-weight:500;font-size:0.875rem;color:var(--cv-text);margin:0 0 0 0;}.tabgroup-description.svelte-16uy9h6 {font-size:0.75rem;color:var(--cv-text-secondary);margin:0;line-height:1.3;}\n\n  /* Toggle Switch */.toggle-switch.svelte-16uy9h6 {position:relative;display:inline-flex;align-items:center;width:44px;height:24px;background:var(--cv-switch-bg);border-radius:9999px;padding:2px;box-sizing:border-box;cursor:pointer;transition:background-color 0.2s ease;border:none;}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6) {display:none;}.toggle-switch.svelte-16uy9h6 .switch-bg:where(.svelte-16uy9h6) {position:absolute;inset:0;border-radius:9999px;background:var(--cv-switch-bg);transition:background-color 0.2s ease;pointer-events:none;}.toggle-switch.svelte-16uy9h6 .switch-knob:where(.svelte-16uy9h6) {position:relative;width:20px;height:20px;background:var(--cv-switch-knob);border-radius:50%;box-shadow:0 1px 2px rgba(0, 0, 0, 0.1);transition:transform 0.2s ease;transform:translateX(0);}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6):checked ~ .switch-knob:where(.svelte-16uy9h6) {transform:translateX(20px);}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6):checked ~ .switch-bg:where(.svelte-16uy9h6) {background:var(--cv-primary);}\n\n  /* Tab Groups List */.tab-groups-list.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;}\n\n  /* Footer */.footer.svelte-16uy9h6 {padding:0.75rem 1rem;border-top:1px solid var(--cv-border);display:flex;align-items:center;justify-content:space-between;background:var(--cv-bg);border-bottom-left-radius:var(--cv-modal-radius, 0.75rem);border-bottom-right-radius:var(--cv-modal-radius, 0.75rem);}.footer-link.svelte-16uy9h6 {align-self:flex-end;color:var(--cv-text-secondary);text-decoration:none;font-size:0.68rem;font-weight:500;letter-spacing:0.08em;opacity:0.5;transition:color 0.15s ease, opacity 0.15s ease;}.footer-link.svelte-16uy9h6:hover {color:var(--cv-primary);opacity:1;}.reset-btn.svelte-16uy9h6 {display:flex;align-items:center;gap:0.4rem;background:transparent;border:none;font-size:0.875rem;font-weight:500;color:var(--cv-text-secondary);cursor:pointer;padding:0.4rem 0.5rem;border-radius:0.5rem;transition:all 0.2s ease;}.reset-btn.svelte-16uy9h6:hover {background:var(--cv-danger-bg);color:var(--cv-danger);}.done-btn.svelte-16uy9h6 {background:var(--cv-primary);color:white;border:none;padding:0.5rem 1.1rem;border-radius:0.5rem;font-weight:600;font-size:0.875rem;cursor:pointer;box-shadow:0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);transition:background-color 0.15s ease, box-shadow 0.15s ease;}.done-btn.svelte-16uy9h6:hover {background:var(--cv-primary-hover);box-shadow:0 3px 6px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);}\n\n  /* Share Tab Styles */.share-content.svelte-16uy9h6 {display:flex;flex-direction:column;gap:1rem;align-items:center;text-align:center;padding:1rem 0;}.share-instruction.svelte-16uy9h6 {font-size:0.95rem;color:var(--cv-text-secondary);margin-bottom:0.5rem;}.share-action-btn.svelte-16uy9h6 {display:flex;align-items:center;justify-content:center;gap:0.75rem;width:100%;max-width:320px;padding:0.75rem 1rem;border-radius:0.5rem;font-weight:500;font-size:0.95rem;cursor:pointer;transition:all 0.2s ease;border:1px solid var(--cv-border);background:var(--cv-bg);color:var(--cv-text);}.share-action-btn.svelte-16uy9h6:hover {border-color:var(--cv-primary);color:var(--cv-primary);background:var(--cv-bg-hover);}.share-action-btn.primary.svelte-16uy9h6 {background:var(--cv-primary);border-color:var(--cv-primary);color:white;}.share-action-btn.primary.svelte-16uy9h6:hover {background:var(--cv-primary-hover);border-color:var(--cv-primary-hover);}.btn-icon.svelte-16uy9h6 {display:flex;align-items:center;justify-content:center;width:1.25rem;height:1.25rem;}\n\n  /* Placeholder Inputs */.placeholders-container.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;}'
     };
 
     function Modal($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$f);
+    	append_styles$1($$anchor, $$css$h);
 
     	/* eslint-disable @typescript-eslint/no-explicit-any */
-    	let isResetting = prop($$props, 'isResetting', 3, false),
-    		onclose = prop($$props, 'onclose', 3, () => {}),
+    	let onclose = prop($$props, 'onclose', 3, () => {}),
     		onreset = prop($$props, 'onreset', 3, () => {}),
     		onstartShare = prop($$props, 'onstartShare', 3, () => {});
 
@@ -11368,30 +11434,25 @@
     	// --- Core Actions ---
     	function handleToggleChange(detail) {
     		const { toggleId, value } = detail;
-    		const currentShown = activeStateStore.state.shownToggles || [];
-    		const currentPeek = activeStateStore.state.peekToggles || [];
-    		const newShown = currentShown.filter((id) => id !== toggleId);
-    		const newPeek = currentPeek.filter((id) => id !== toggleId);
 
-    		if (value === 'show') newShown.push(toggleId);
-    		if (value === 'peek') newPeek.push(toggleId);
-
-    		activeStateStore.setToggles(newShown, newPeek);
+    		activeStateStore.updateToggleState(toggleId, value);
     	}
 
     	function handleTabGroupChange(detail) {
     		const { groupId, tabId } = detail;
 
-    		// Scroll Logic: Capture target before state update
-    		const groupToScrollTo = findHighestVisibleElement('cv-tabgroup');
+    		// Capture element and its current visual position before state change
+    		const anchorEl = findHighestVisibleElement('cv-tabgroup');
+
+    		const scrollAnchor = anchorEl
+    			? { element: anchorEl, top: anchorEl.getBoundingClientRect().top }
+    			: null;
 
     		activeStateStore.setPinnedTab(groupId, tabId);
 
-    		// Restore scroll after update
-    		if (groupToScrollTo) {
-    			queueMicrotask(() => {
-    				scrollToElement(groupToScrollTo);
-    			});
+    		// Restore visual position after layout shift
+    		if (scrollAnchor) {
+    			handleScrollAnchor(scrollAnchor);
     		}
     	}
 
@@ -11430,7 +11491,7 @@
     		return 'hide';
     	}
 
-    	var div = root$e();
+    	var div = root$g();
 
     	div.__click = (e) => {
     		if (e.target === e.currentTarget) onclose()();
@@ -11470,7 +11531,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var button_1 = root_1$8();
+    			var button_1 = root_1$9();
 
     			button_1.__click = () => set(activeTab, 'customize');
     			template_effect(() => set_class(button_1, 1, `tab ${get(activeTab) === 'customize' ? 'active' : ''}`, 'svelte-16uy9h6'));
@@ -11491,12 +11552,12 @@
 
     	{
     		var consequent_7 = ($$anchor) => {
-    			var div_6 = root_2$3();
+    			var div_6 = root_2$7();
     			var node_4 = child(div_6);
 
     			{
     				var consequent_1 = ($$anchor) => {
-    					var p = root_3$2();
+    					var p = root_3$5();
     					var text_1 = child(p, true);
 
     					reset(p);
@@ -11512,12 +11573,12 @@
     			var node_5 = sibling(node_4, 2);
 
     			each(node_5, 16, () => get(sectionOrder), (section) => section, ($$anchor, section) => {
-    				var fragment = root_4();
+    				var fragment = root_4$2();
     				var node_6 = first_child(fragment);
 
     				{
     					var consequent_2 = ($$anchor) => {
-    						var div_7 = root_5();
+    						var div_7 = root_5$1();
     						var div_8 = sibling(child(div_7), 2);
 
     						each(div_8, 21, () => get(toggles), (toggle) => toggle.toggleId, ($$anchor, toggle) => {
@@ -11782,14 +11843,6 @@
     				onreset()?.apply(this, $$args);
     			};
 
-    			var span_3 = child(button_5);
-    			var node_16 = child(span_3);
-
-    			IconReset(node_16, {});
-    			reset(span_3);
-    			next(2);
-    			reset(button_5);
-    			template_effect(() => set_class(span_3, 1, `reset-btn-icon ${isResetting() ? 'spinning' : ''}`, 'svelte-16uy9h6'));
     			append($$anchor, button_5);
     		};
 
@@ -11804,14 +11857,7 @@
     		});
     	}
 
-    	var a = sibling(node_15, 2);
-    	var node_17 = child(a);
-
-    	IconGitHub(node_17, {});
-    	next(2);
-    	reset(a);
-
-    	var button_6 = sibling(a, 2);
+    	var button_6 = sibling(node_15, 4);
 
     	button_6.__click = function (...$$args) {
     		onclose()?.apply(this, $$args);
@@ -11840,6 +11886,27 @@
 
     delegate(['click', 'change']);
 
+    const HIGHLIGHT_COLORS = [
+        { key: 'yellow', label: 'Yellow', hex: '#f5f521' }, // default
+        { key: 'blue', label: 'Blue', hex: '#3b82f6' },
+        { key: 'red', label: 'Red', hex: '#ef4444' },
+        { key: 'black', label: 'Black', hex: '#1a1a1a' },
+        { key: 'green', label: 'Green', hex: '#22c55e' },
+    ];
+    const DEFAULT_COLOR_KEY = 'yellow';
+
+    const ANNOTATION_CORNERS = ['tl', 'tr', 'bl', 'br'];
+    const CORNER_ICONS = [
+        { key: 'tl', icon: '◤' },
+        { key: 'tr', icon: '◥' },
+        { key: 'bl', icon: '◣' },
+        { key: 'br', icon: '◢' },
+    ];
+    const DEFAULT_ANNOTATION_CORNER = 'tl';
+    const MAX_ANNOTATION_LENGTH = 280;
+    const ANNOTATION_PREVIEW_LENGTH = 40;
+
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     /**
      * Generates a simple hash code for a string.
      */
@@ -11906,11 +11973,31 @@
             s: d.textSnippet,
             h: d.textHash,
             id: d.elementId,
+            ...(d.color && d.color !== DEFAULT_COLOR_KEY ? { c: d.color } : {}),
+            ...(d.annotation ? { n: d.annotation } : {}),
+            ...(d.annotation && d.annotationCorner && d.annotationCorner !== DEFAULT_ANNOTATION_CORNER
+                ? { nc: d.annotationCorner }
+                : {}),
         }));
-        // Check if all have IDs, use human-readable format
+        // When all elements have stable IDs, use a human-readable format.
+        // Annotations are encoded via encodeURIComponent so the format stays URL-readable.
+        // Format per element:
+        //   no color, no note  → "id"
+        //   color only         → "id:color"
+        //   color + note       → "id:color:corner:encodedNote"  (always 4 parts)
+        //   note, no color     → "id::corner:encodedNote"
         const allHaveIds = minified.every((m) => !!m.id);
         if (allHaveIds) {
-            return minified.map((m) => m.id).join(',');
+            return minified.map((m) => {
+                const id = m.id;
+                const c = m.c ?? '';
+                const n = m.n;
+                const nc = m.nc ?? DEFAULT_ANNOTATION_CORNER;
+                if (n) {
+                    return `${id}:${c}:${nc}:${encodeURIComponent(n)}`;
+                }
+                return c ? `${id}:${c}` : id;
+            }).join(',');
         }
         const json = JSON.stringify(minified);
         // Modern UTF-8 safe Base64 encoding
@@ -11954,7 +12041,7 @@
                 // Robustness: Ensure item is an object
                 if (typeof m !== 'object' || m === null)
                     throw new Error('Item is not an object');
-                return {
+                const descriptor = {
                     tag: m.t,
                     index: m.i,
                     parentId: m.p,
@@ -11962,6 +12049,13 @@
                     textHash: m.h,
                     elementId: m.id,
                 };
+                if (m.c)
+                    descriptor.color = m.c;
+                if (m.n) {
+                    descriptor.annotation = m.n;
+                    descriptor.annotationCorner = (m.nc ?? DEFAULT_ANNOTATION_CORNER);
+                }
+                return descriptor;
             });
         }
         catch {
@@ -11969,18 +12063,67 @@
             return parseIds(encoded);
         }
     }
+    const COLOR_KEYS = new Set(HIGHLIGHT_COLORS.map((c) => c.key));
+    const CORNER_KEYS = new Set(ANNOTATION_CORNERS);
     /**
      * Parses a space-separated, plus-separated, or comma-separated list of IDs into a list of AnchorDescriptors.
+     * Supports:
+     *   "id"                        — ID only
+     *   "id:color"                  — with color
+     *   "id:color:corner:note"      — with color + annotation (note is percent-encoded)
+     *   "id::corner:note"           — annotation, no color
      */
     function parseIds(encoded) {
         const parts = encoded.split(/[ +,]+/).filter((p) => p.length > 0);
-        return parts.map((id) => ({
-            tag: 'ANY',
-            index: 0,
-            textSnippet: '',
-            textHash: 0,
-            elementId: id,
-        }));
+        return parts.map((part) => {
+            // Split into at most 4 segments on ':'. The note segment (4th) is the
+            // remainder so it can itself contain encoded colons (%3A).
+            const segs = part.split(':');
+            let id = part;
+            let color;
+            let annotation;
+            let annotationCorner;
+            if (segs.length >= 4) {
+                // "id:color:corner:encodedNote..."
+                id = segs[0];
+                const colorSeg = segs[1];
+                const cornerSeg = segs[2];
+                const noteSeg = segs.slice(3).join(':'); // re-join in case of extra colons
+                if (COLOR_KEYS.has(colorSeg))
+                    color = colorSeg;
+                annotationCorner = CORNER_KEYS.has(cornerSeg)
+                    ? cornerSeg
+                    : DEFAULT_ANNOTATION_CORNER;
+                try {
+                    annotation = decodeURIComponent(noteSeg);
+                }
+                catch {
+                    annotation = noteSeg;
+                }
+            }
+            else if (segs.length === 2) {
+                // "id:color"
+                const colorSeg = segs[1];
+                if (COLOR_KEYS.has(colorSeg)) {
+                    id = segs[0];
+                    color = colorSeg;
+                }
+            }
+            const descriptor = {
+                tag: 'ANY',
+                index: 0,
+                textSnippet: '',
+                textHash: 0,
+                elementId: id,
+            };
+            if (color !== undefined)
+                descriptor.color = color;
+            if (annotation !== undefined && annotationCorner !== undefined) {
+                descriptor.annotation = annotation;
+                descriptor.annotationCorner = annotationCorner;
+            }
+            return descriptor;
+        });
     }
     const SCORE_EXACT_HASH = 50;
     const SCORE_SNIPPET_START = 30;
@@ -12213,6 +12356,8 @@
     		set(this.#currentHoverTarget, value, true);
     	}
 
+    	highlightColors = new SvelteMap();
+    	highlightAnnotations = new SvelteMap();
     	#shareCount = user_derived(() => this.selectedElements.size);
 
     	get shareCount() {
@@ -12289,6 +12434,8 @@
     			this.selectedElements.forEach((oldEl) => {
     				if (!updatedSelection.has(oldEl)) {
     					this._removeSelectionClass(oldEl);
+    					this.highlightColors.delete(oldEl);
+    					this.highlightAnnotations.delete(oldEl);
     				}
     			});
 
@@ -12314,6 +12461,30 @@
     	clearAllSelections() {
     		this.selectedElements.forEach((el) => this._removeSelectionClass(el));
     		this.selectedElements.clear();
+    		this.highlightColors.clear();
+    		this.highlightAnnotations.clear();
+    	}
+
+    	setAnnotation(el, text, corner) {
+    		const trimmed = text.trim();
+
+    		if (trimmed.length === 0) {
+    			this.highlightAnnotations.delete(el);
+    		} else {
+    			const validatedText = trimmed.length > MAX_ANNOTATION_LENGTH ? trimmed.substring(0, MAX_ANNOTATION_LENGTH) : trimmed;
+
+    			this.highlightAnnotations.set(el, { text: validatedText, corner });
+    		}
+    	}
+
+    	setHighlightColor(el, color) {
+    		this.highlightColors.set(el, color);
+    	}
+
+    	setAllHighlightColors(color) {
+    		this.selectedElements.forEach((el) => {
+    			this.highlightColors.set(el, color);
+    		});
     	}
 
     	_addHighlightClass(el) {
@@ -12351,7 +12522,7 @@
     			return;
     		}
 
-    		const descriptors = Array.from(this.selectedElements).map((el) => createDescriptor(el));
+    		const descriptors = this._buildDescriptors();
     		let serialized;
 
     		try {
@@ -12394,7 +12565,7 @@
     			return;
     		}
 
-    		const descriptors = Array.from(this.selectedElements).map((el) => createDescriptor(el));
+    		const descriptors = this._buildDescriptors();
     		const serialized = serialize(descriptors);
 
     		// eslint-disable-next-line svelte/prefer-svelte-reactivity
@@ -12414,9 +12585,58 @@
 
     		window.open(url.toString(), '_blank');
     	}
+
+    	_buildDescriptors() {
+    		return Array.from(this.selectedElements).map((el) => {
+    			const desc = createDescriptor(el);
+
+    			if (this.selectionMode === 'highlight') {
+    				const color = this.highlightColors.get(el);
+
+    				if (color !== undefined) desc.color = color;
+
+    				const annotation = this.highlightAnnotations.get(el);
+
+    				if (annotation !== undefined) {
+    					desc.annotation = annotation.text;
+    					desc.annotationCorner = annotation.corner;
+    				}
+    			}
+
+    			return desc;
+    		});
+    	}
     }
 
     const shareStore = new ShareStore();
+
+    /* focus-store.svelte.ts generated by Svelte v5.46.1 */
+
+    class FocusStore {
+    	#isActive = state(false);
+
+    	get isActive() {
+    		return get(this.#isActive);
+    	}
+
+    	set isActive(value) {
+    		set(this.#isActive, value, true);
+    	}
+
+    	setIsActive(isActive) {
+    		this.isActive = isActive;
+    	}
+
+    	/**
+    	 * Signals intent to exit focus mode.
+    	 * Logic is handled by the service observing this state.
+    	 */
+    	exit() {
+    		this.isActive = false;
+    	}
+    }
+
+    const focusStore = new FocusStore();
 
     enable_legacy_mode_flag();
 
@@ -12513,23 +12733,23 @@
     	return zoom;
     }
 
-    var root_1$7 = from_html(`<div role="alert" aria-live="polite"> </div>`);
-    var root$d = from_html(`<div class="toast-container svelte-14irt8g"></div>`);
+    var root_1$8 = from_html(`<div role="alert" aria-live="polite"> </div>`);
+    var root$f = from_html(`<div class="toast-container svelte-14irt8g"></div>`);
 
-    const $$css$e = {
+    const $$css$g = {
     	hash: 'svelte-14irt8g',
     	code: '.toast-container.svelte-14irt8g {position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:20000;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none; /* Let clicks pass through container */}.toast-item.svelte-14irt8g {background:rgba(0, 0, 0, 0.85);color:white;padding:10px 20px;border-radius:4px;font-size:14px;box-shadow:0 4px 6px rgba(0, 0, 0, 0.1);pointer-events:auto; /* Re-enable clicks on toasts */max-width:300px;text-align:center;}'
     };
 
     function Toast($$anchor, $$props) {
     	push($$props, false);
-    	append_styles$1($$anchor, $$css$e);
+    	append_styles$1($$anchor, $$css$g);
     	init();
 
-    	var div = root$d();
+    	var div = root$f();
 
     	each(div, 13, () => toast.items, (t) => t.id, ($$anchor, t) => {
-    		var div_1 = root_1$7();
+    		var div_1 = root_1$8();
     		var text = child(div_1, true);
 
     		reset(div_1);
@@ -12550,16 +12770,16 @@
     	pop();
     }
 
-    var root$c = from_html(`<div class="floating-bar svelte-bs8cbd"><div class="mode-toggle svelte-bs8cbd"><button title="Show only selected elements">Show</button> <button title="Hide selected elements">Hide</button> <button title="Highlight selected elements">Highlight</button></div> <span class="divider svelte-bs8cbd"></span> <span class="count svelte-bs8cbd"> </span> <button class="btn clear svelte-bs8cbd">Clear</button> <button class="btn preview svelte-bs8cbd">Preview</button> <button class="btn generate svelte-bs8cbd">Copy Link</button> <button class="btn exit svelte-bs8cbd">Exit</button></div>`);
+    var root$e = from_html(`<div class="floating-bar svelte-bs8cbd"><div class="mode-toggle svelte-bs8cbd"><button title="Show only selected elements">Show</button> <button title="Hide selected elements">Hide</button> <button title="Highlight selected elements">Highlight</button></div> <span class="divider svelte-bs8cbd"></span> <span class="count svelte-bs8cbd"> </span> <button class="btn clear svelte-bs8cbd">Clear</button> <button class="btn preview svelte-bs8cbd">Preview</button> <button class="btn generate svelte-bs8cbd">Copy Link</button> <button class="btn exit svelte-bs8cbd">Exit</button></div>`);
 
-    const $$css$d = {
+    const $$css$f = {
     	hash: 'svelte-bs8cbd',
     	code: '.floating-bar.svelte-bs8cbd {position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background-color:#2c2c2c;color:#f1f1f1;border-radius:8px;padding:8px 12px;box-shadow:0 8px 20px rgba(0, 0, 0, 0.4);display:grid;grid-template-columns:auto auto 1fr auto auto auto auto;align-items:center;gap:12px;z-index:99999;font-family:system-ui,\n      -apple-system,\n      sans-serif;font-size:14px;border:1px solid #4a4a4a;pointer-events:auto;white-space:nowrap;min-width:500px;}.mode-toggle.svelte-bs8cbd {display:flex;background:#1a1a1a;border-radius:6px;padding:2px;border:1px solid #4a4a4a;}.mode-btn.svelte-bs8cbd {background:transparent;color:#aeaeae;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.2s;}.mode-btn.svelte-bs8cbd:hover {color:#fff;}.mode-btn.active.svelte-bs8cbd {background:#4a4a4a;color:#fff;box-shadow:0 1px 3px rgba(0, 0, 0, 0.2);}.divider.svelte-bs8cbd {width:1px;height:20px;background:#4a4a4a;margin:0 4px;}.count.svelte-bs8cbd {font-weight:500;min-width:120px;text-align:center;font-size:13px;color:#ccc;}.btn.svelte-bs8cbd {background-color:#0078d4;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-weight:500;transition:background-color 0.2s;font-size:13px;}.btn.svelte-bs8cbd:hover {background-color:#005a9e;}.btn.clear.svelte-bs8cbd {background-color:transparent;border:1px solid #5a5a5a;color:#dadada;}.btn.clear.svelte-bs8cbd:hover {background-color:#3a3a3a;color:white;}.btn.preview.svelte-bs8cbd {background-color:#333;border:1px solid #555;}.btn.preview.svelte-bs8cbd:hover {background-color:#444;}.btn.exit.svelte-bs8cbd {background-color:transparent;color:#ff6b6b;padding:6px 10px;}.btn.exit.svelte-bs8cbd:hover {background-color:rgba(255, 107, 107, 0.1);}\n\n  @media (max-width: 600px) {.floating-bar.svelte-bs8cbd {display:flex;flex-wrap:wrap;min-width:unset;width:90%;max-width:400px;height:auto;padding:12px;gap:10px;bottom:30px;}.mode-toggle.svelte-bs8cbd {margin-right:auto;order:1;}.btn.exit.svelte-bs8cbd {margin-left:auto;order:2;}.divider.svelte-bs8cbd {display:none;}.count.svelte-bs8cbd {width:100%;text-align:center;order:3;padding:8px 0;border-top:1px solid #3a3a3a;border-bottom:1px solid #3a3a3a;margin:4px 0;}.btn.clear.svelte-bs8cbd,\n    .btn.preview.svelte-bs8cbd,\n    .btn.generate.svelte-bs8cbd {flex:1;text-align:center;font-size:12px;padding:8px 4px;order:4;}.btn.generate.svelte-bs8cbd {flex:1.5;}\n  }'
     };
 
     function ShareToolbar($$anchor, $$props) {
     	push($$props, false);
-    	append_styles$1($$anchor, $$css$d);
+    	append_styles$1($$anchor, $$css$f);
 
     	function handleClear() {
     		shareStore.clearAllSelections();
@@ -12579,7 +12799,7 @@
 
     	init();
 
-    	var div = root$c();
+    	var div = root$e();
     	var div_1 = child(div);
     	var button = child(div_1);
 
@@ -12637,18 +12857,18 @@
 
     delegate(['click']);
 
-    var root_2$2 = from_html(`<span class="id-badge svelte-64gpkh" title="ID detection active"> </span>`);
-    var root_3$1 = from_html(`<button class="action-btn up svelte-64gpkh" title="Select Parent">↰</button>`);
-    var root_1$6 = from_html(`<div class="hover-helper svelte-64gpkh"><div class="info svelte-64gpkh"><span class="tag svelte-64gpkh"> </span> <!></div> <button> </button> <!></div>`);
+    var root_2$6 = from_html(`<span class="id-badge svelte-64gpkh" title="ID detection active"> </span>`);
+    var root_3$4 = from_html(`<button class="action-btn up svelte-64gpkh" title="Select Parent">↰</button>`);
+    var root_1$7 = from_html(`<div class="hover-helper svelte-64gpkh"><div class="info svelte-64gpkh"><span class="tag svelte-64gpkh"> </span> <!></div> <button> </button> <!></div>`);
 
-    const $$css$c = {
+    const $$css$e = {
     	hash: 'svelte-64gpkh',
     	code: '.hover-helper.svelte-64gpkh {position:fixed;z-index:99999;background-color:#333;color:white;padding:4px 8px;border-radius:4px;display:flex;align-items:center;gap:8px;box-shadow:0 2px 5px rgba(0, 0, 0, 0.2);font-family:monospace;pointer-events:auto;}.info.svelte-64gpkh {display:flex;flex-direction:column;align-items:flex-start;line-height:1;gap:2px;}.tag.svelte-64gpkh {font-size:12px;font-weight:bold;color:#aeaeae;}.id-badge.svelte-64gpkh {font-size:10px;color:#64d2ff;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.action-btn.svelte-64gpkh {background:#555;border:none;color:white;border-radius:3px;cursor:pointer;padding:2px 6px;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background-color 0.1s;}.action-btn.svelte-64gpkh:hover {background:#777;}.action-btn.deselect.svelte-64gpkh {background-color:#d13438;}.action-btn.deselect.svelte-64gpkh:hover {background-color:#a42628;}'
     };
 
     function HoverHelper($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$c);
+    	append_styles$1($$anchor, $$css$e);
 
     	// Derived state for easier access
     	let target = user_derived(() => shareStore.currentHoverTarget);
@@ -12747,7 +12967,7 @@
 
     	{
     		var consequent_2 = ($$anchor) => {
-    			var div = root_1$6();
+    			var div = root_1$7();
     			var div_1 = child(div);
     			var span = child(div_1);
     			var text = child(span, true);
@@ -12758,7 +12978,7 @@
 
     			{
     				var consequent = ($$anchor) => {
-    					var span_1 = root_2$2();
+    					var span_1 = root_2$6();
     					var text_1 = child(span_1);
 
     					reset(span_1);
@@ -12785,7 +13005,7 @@
 
     			{
     				var consequent_1 = ($$anchor) => {
-    					var button_1 = root_3$1();
+    					var button_1 = root_3$4();
 
     					button_1.__click = handleSelectParent;
     					append($$anchor, button_1);
@@ -12822,8 +13042,334 @@
 
     delegate(['click']);
 
-    var root_1$5 = from_html(`<div><span class="selection-label svelte-1dbf58w"> </span></div>`);
-    var root$b = from_html(`<div class="share-overlay-ui"><!> <!> <!></div>`);
+    var root_2$5 = from_html(`<button></button>`);
+    var root_1$6 = from_html(`<div class="cv-color-swatches svelte-1r78n4c" role="none"></div>`);
+    var root$d = from_html(`<div class="cv-color-picker svelte-1r78n4c" role="none"><button class="cv-color-trigger svelte-1r78n4c" title="Choose highlight color" aria-label="Choose highlight color"><span class="cv-color-dot svelte-1r78n4c"></span></button> <!></div>`);
+
+    const $$css$d = {
+    	hash: 'svelte-1r78n4c',
+    	code: '.cv-color-picker.svelte-1r78n4c {position:fixed;transform:translateX(-50%) translateY(-100%);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:auto;z-index:9500;\n    /* Nudge down so the trigger peeks above the element edge */margin-top:8px;}.cv-color-trigger.svelte-1r78n4c {width:22px;height:16px;border-radius:100px;border:1.5px solid rgba(0, 0, 0, 0.18);background:white;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:0 2px 8px rgba(0, 0, 0, 0.15);transition:box-shadow 0.15s;}.cv-color-trigger.svelte-1r78n4c:hover {box-shadow:0 3px 12px rgba(0, 0, 0, 0.22);}.cv-color-dot.svelte-1r78n4c {width:10px;height:10px;border-radius:50%;display:block;border:1px solid rgba(0, 0, 0, 0.12);}.cv-color-swatches.svelte-1r78n4c {display:flex;flex-direction:row;gap:4px;background:white;border-radius:100px;padding:4px 6px;box-shadow:0 4px 16px rgba(0, 0, 0, 0.18);border:1px solid rgba(0, 0, 0, 0.1);}.cv-color-swatch.svelte-1r78n4c {width:16px;height:16px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;transition:transform 0.1s, border-color 0.1s;}.cv-color-swatch.svelte-1r78n4c:hover {transform:scale(1.2);border-color:rgba(0, 0, 0, 0.3);}.cv-color-swatch.active.svelte-1r78n4c {border-color:rgba(0, 0, 0, 0.5);transform:scale(1.15);}'
+    };
+
+    function HighlightColorPicker($$anchor, $$props) {
+    	push($$props, true);
+    	append_styles$1($$anchor, $$css$d);
+
+    	let isExpanded = state(false);
+    	let rect = state(proxy({ top: 0, left: 0, width: 0 }));
+
+    	user_effect(() => {
+    		set(rect, $$props.element.getBoundingClientRect(), true);
+
+    		const update = () => {
+    			set(rect, $$props.element.getBoundingClientRect(), true);
+    		};
+
+    		window.addEventListener('scroll', update, { capture: true, passive: true });
+    		window.addEventListener('resize', update, { passive: true });
+
+    		return () => {
+    			window.removeEventListener('scroll', update, { capture: true });
+    			window.removeEventListener('resize', update);
+
+    			if (clickTimer) clearTimeout(clickTimer);
+    		};
+    	});
+
+    	let currentColorKey = user_derived(() => shareStore.highlightColors.get($$props.element) ?? DEFAULT_COLOR_KEY);
+    	let currentHex = user_derived(() => HIGHLIGHT_COLORS.find((c) => c.key === get(currentColorKey))?.hex ?? HIGHLIGHT_COLORS[0].hex);
+    	let clickTimer = null;
+
+    	function handleTriggerClick(e) {
+    		e.stopPropagation();
+    		set(isExpanded, !get(isExpanded));
+    	}
+
+    	function handleSwatchClick(e, key) {
+    		e.stopPropagation();
+
+    		if (clickTimer) return; // defer to potential dblclick
+
+    		clickTimer = setTimeout(
+    			() => {
+    				clickTimer = null;
+    				shareStore.setHighlightColor($$props.element, key);
+    				set(isExpanded, false);
+    			},
+    			220
+    		);
+    	}
+
+    	function handleSwatchDblClick(e, key) {
+    		e.stopPropagation();
+
+    		if (clickTimer) {
+    			clearTimeout(clickTimer);
+    			clickTimer = null;
+    		}
+
+    		shareStore.setAllHighlightColors(key);
+    		set(isExpanded, false);
+    	}
+
+    	let centerX = user_derived(() => get(rect).left + get(rect).width / 2);
+    	let topY = user_derived(() => get(rect).top);
+    	var div = root$d();
+    	var button = child(div);
+
+    	button.__click = handleTriggerClick;
+
+    	var span = child(button);
+
+    	reset(button);
+
+    	var node = sibling(button, 2);
+
+    	{
+    		var consequent = ($$anchor) => {
+    			var div_1 = root_1$6();
+
+    			each(div_1, 21, () => HIGHLIGHT_COLORS, index, ($$anchor, color) => {
+    				var button_1 = root_2$5();
+    				let classes;
+
+    				button_1.__click = (e) => handleSwatchClick(e, get(color).key);
+    				button_1.__dblclick = (e) => handleSwatchDblClick(e, get(color).key);
+
+    				template_effect(() => {
+    					classes = set_class(button_1, 1, 'cv-color-swatch svelte-1r78n4c', null, classes, { active: get(currentColorKey) === get(color).key });
+    					set_style(button_1, `background: ${get(color).hex ?? ''};`);
+    					set_attribute(button_1, 'title', `${get(color).label ?? ''} · dbl-click to apply to all`);
+    					set_attribute(button_1, 'aria-label', get(color).label);
+    					set_attribute(button_1, 'aria-pressed', get(currentColorKey) === get(color).key);
+    				});
+
+    				append($$anchor, button_1);
+    			});
+
+    			reset(div_1);
+    			append($$anchor, div_1);
+    		};
+
+    		if_block(node, ($$render) => {
+    			if (get(isExpanded)) $$render(consequent);
+    		});
+    	}
+
+    	reset(div);
+
+    	template_effect(() => {
+    		set_style(div, `left: ${get(centerX) ?? ''}px; top: ${get(topY) ?? ''}px;`);
+    		set_attribute(button, 'aria-expanded', get(isExpanded));
+    		set_style(span, `background: ${get(currentHex) ?? ''};`);
+    	});
+
+    	append($$anchor, div);
+    	pop();
+    }
+
+    delegate(['click', 'dblclick']);
+
+    var root_1$5 = from_html(`<span class="cv-annotation-tab-preview svelte-1r1spmr"> </span>`);
+    var root_2$4 = from_html(`<span class="cv-annotation-tab-icon svelte-1r1spmr">+ note</span>`);
+    var root_4$1 = from_html(`<button> </button>`);
+    var root_3$3 = from_html(`<div class="cv-annotation-panel svelte-1r1spmr" role="none"><textarea class="cv-annotation-textarea svelte-1r1spmr" placeholder="Add a note…" rows="3"></textarea> <div class="cv-annotation-footer svelte-1r1spmr"><div class="cv-corner-selector svelte-1r1spmr" role="group" aria-label="Anchor corner"></div> <span class="cv-char-counter svelte-1r1spmr"> </span></div></div>`);
+    var root$c = from_html(`<div class="cv-annotation-editor svelte-1r1spmr" role="none"><button aria-label="Annotation"><!></button> <!></div>`);
+
+    const $$css$c = {
+    	hash: 'svelte-1r1spmr',
+    	code: '.cv-annotation-editor.svelte-1r1spmr {position:fixed;z-index:9400;pointer-events:auto;display:flex;flex-direction:column;align-items:flex-start;gap:2px;}.cv-annotation-tab.svelte-1r1spmr {height:20px;padding:0 8px;border-radius:100px;border:1.5px solid rgba(0, 0, 0, 0.18);background:white;cursor:pointer;display:flex;align-items:center;gap:4px;box-shadow:0 2px 8px rgba(0, 0, 0, 0.15);transition:box-shadow 0.15s;max-width:160px;overflow:hidden;}.cv-annotation-tab.svelte-1r1spmr:hover {box-shadow:0 3px 12px rgba(0, 0, 0, 0.22);}.cv-annotation-tab--has-text.svelte-1r1spmr {background:#fffbe6;border-color:rgba(180, 83, 9, 0.4);}.cv-annotation-tab-icon.svelte-1r1spmr {font-size:10px;line-height:1;color:#6b7280;}.cv-annotation-tab-preview.svelte-1r1spmr {font-size:9px;font-weight:600;color:#1a1a1a;font-family:ui-sans-serif, system-ui, sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;}.cv-annotation-panel.svelte-1r1spmr {background:white;border-radius:8px;border:1px solid rgba(0, 0, 0, 0.12);box-shadow:0 4px 16px rgba(0, 0, 0, 0.18);padding:8px;width:220px;display:flex;flex-direction:column;gap:6px;}.cv-annotation-textarea.svelte-1r1spmr {width:100%;box-sizing:border-box;resize:vertical;border:1px solid rgba(0, 0, 0, 0.15);border-radius:4px;padding:5px 7px;font-size:11px;font-family:ui-sans-serif, system-ui, sans-serif;color:#1a1a1a;line-height:1.5;outline:none;min-height:56px;}.cv-annotation-textarea.svelte-1r1spmr:focus {border-color:#b45309;box-shadow:0 0 0 2px rgba(180, 83, 9, 0.15);}.cv-annotation-footer.svelte-1r1spmr {display:flex;align-items:center;justify-content:space-between;}.cv-corner-selector.svelte-1r1spmr {display:flex;gap:2px;}.cv-corner-btn.svelte-1r1spmr {width:20px;height:20px;border-radius:4px;border:1px solid rgba(0, 0, 0, 0.12);background:white;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;color:#6b7280;padding:0;transition:background 0.1s, border-color 0.1s;}.cv-corner-btn.svelte-1r1spmr:hover {background:#fef3c7;border-color:#b45309;color:#1a1a1a;}.cv-corner-btn.active.svelte-1r1spmr {background:#fef3c7;border-color:#b45309;color:#92400e;font-weight:700;}.cv-char-counter.svelte-1r1spmr {font-size:9px;color:#9ca3af;font-family:ui-sans-serif, system-ui, sans-serif;font-variant-numeric:tabular-nums;}'
+    };
+
+    function HighlightAnnotationEditor($$anchor, $$props) {
+    	push($$props, true);
+    	append_styles$1($$anchor, $$css$c);
+
+    	let isExpanded = state(false);
+    	let rect = state(proxy({ top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }));
+
+    	user_effect(() => {
+    		set(rect, $$props.element.getBoundingClientRect(), true);
+
+    		const update = () => {
+    			set(rect, $$props.element.getBoundingClientRect(), true);
+    		};
+
+    		window.addEventListener('scroll', update, { capture: true, passive: true });
+    		window.addEventListener('resize', update, { passive: true });
+
+    		return () => {
+    			window.removeEventListener('scroll', update, { capture: true });
+    			window.removeEventListener('resize', update);
+    		};
+    	});
+
+    	let localText = state('');
+    	let localCorner = state(proxy(DEFAULT_ANNOTATION_CORNER));
+
+    	// Initialize from store when element changes (or annotation changes externally)
+    	user_pre_effect(() => {
+    		const ann = shareStore.highlightAnnotations.get($$props.element);
+    		const newText = ann?.text ?? '';
+    		const newCorner = ann?.corner ?? DEFAULT_ANNOTATION_CORNER;
+
+    		if (get(localText) !== newText) {
+    			set(localText, newText, true);
+    		}
+
+    		if (get(localCorner) !== newCorner) {
+    			set(localCorner, newCorner, true);
+    		}
+    	});
+
+    	function handleInput(e) {
+    		const value = e.target.value;
+
+    		set(localText, value, true);
+    		shareStore.setAnnotation($$props.element, value, get(localCorner));
+    	}
+
+    	function setCorner(c) {
+    		set(localCorner, c, true);
+    		shareStore.setAnnotation($$props.element, get(localText), c);
+    	}
+
+    	function handleTabClick(e) {
+    		e.stopPropagation();
+    		set(isExpanded, !get(isExpanded));
+    	}
+
+    	let tabStyle = user_derived(() => {
+    		switch (get(localCorner)) {
+    			case 'tl':
+    				return `top: ${get(rect).top}px; left: ${get(rect).left}px; transform: translateY(-100%);`;
+
+    			case 'tr':
+    				return `top: ${get(rect).top}px; left: ${get(rect).right}px; transform: translate(-100%, -100%);`;
+
+    			case 'bl':
+    				return `top: ${get(rect).bottom}px; left: ${get(rect).left}px;`;
+
+    			case 'br':
+    				return `top: ${get(rect).bottom}px; left: ${get(rect).right}px; transform: translateX(-100%);`;
+    		}
+    	});
+
+    	let preview = user_derived(() => get(localText).length > 0
+    		? get(localText).slice(0, ANNOTATION_PREVIEW_LENGTH) + (get(localText).length > ANNOTATION_PREVIEW_LENGTH ? '…' : '')
+    		: null);
+
+    	var div = root$c();
+    	var button = child(div);
+    	let classes;
+
+    	button.__click = handleTabClick;
+
+    	var node = child(button);
+
+    	{
+    		var consequent = ($$anchor) => {
+    			var span = root_1$5();
+    			var text = child(span, true);
+
+    			reset(span);
+    			template_effect(() => set_text(text, get(preview)));
+    			append($$anchor, span);
+    		};
+
+    		var alternate = ($$anchor) => {
+    			var span_1 = root_2$4();
+
+    			append($$anchor, span_1);
+    		};
+
+    		if_block(node, ($$render) => {
+    			if (get(preview)) $$render(consequent); else $$render(alternate, false);
+    		});
+    	}
+
+    	reset(button);
+
+    	var node_1 = sibling(button, 2);
+
+    	{
+    		var consequent_1 = ($$anchor) => {
+    			var div_1 = root_3$3();
+    			var textarea = child(div_1);
+
+    			remove_textarea_child(textarea);
+    			textarea.__input = handleInput;
+
+    			var div_2 = sibling(textarea, 2);
+    			var div_3 = child(div_2);
+
+    			each(div_3, 21, () => CORNER_ICONS, ({ key, icon }) => key, ($$anchor, $$item) => {
+    				let key = () => get($$item).key;
+    				let icon = () => get($$item).icon;
+    				var button_1 = root_4$1();
+    				let classes_1;
+
+    				button_1.__click = (e) => {
+    					e.stopPropagation();
+    					setCorner(key());
+    				};
+
+    				var text_1 = child(button_1, true);
+
+    				reset(button_1);
+
+    				template_effect(() => {
+    					classes_1 = set_class(button_1, 1, 'cv-corner-btn svelte-1r1spmr', null, classes_1, { active: get(localCorner) === key() });
+    					set_attribute(button_1, 'title', `Anchor to ${key() ?? ''}`);
+    					set_attribute(button_1, 'aria-label', `Anchor to ${key() ?? ''}`);
+    					set_attribute(button_1, 'aria-pressed', get(localCorner) === key());
+    					set_text(text_1, icon());
+    				});
+
+    				append($$anchor, button_1);
+    			});
+
+    			reset(div_3);
+
+    			var span_2 = sibling(div_3, 2);
+    			var text_2 = child(span_2, true);
+
+    			reset(span_2);
+    			reset(div_2);
+    			reset(div_1);
+
+    			template_effect(() => {
+    				set_attribute(textarea, 'maxlength', MAX_ANNOTATION_LENGTH);
+    				set_value(textarea, get(localText));
+    				set_text(text_2, MAX_ANNOTATION_LENGTH - get(localText).length);
+    			});
+
+    			append($$anchor, div_1);
+    		};
+
+    		if_block(node_1, ($$render) => {
+    			if (get(isExpanded)) $$render(consequent_1);
+    		});
+    	}
+
+    	reset(div);
+
+    	template_effect(() => {
+    		set_style(div, get(tabStyle));
+    		classes = set_class(button, 1, 'cv-annotation-tab svelte-1r1spmr', null, classes, { 'cv-annotation-tab--has-text': get(localText).length > 0 });
+    		set_attribute(button, 'title', get(localText).length > 0 ? get(localText) : 'Add annotation');
+    		set_attribute(button, 'aria-expanded', get(isExpanded));
+    	});
+
+    	append($$anchor, div);
+    	pop();
+    }
+
+    delegate(['click', 'input']);
+
+    var root_2$3 = from_html(`<!> <!>`, 1);
+    var root_3$2 = from_html(`<div><span class="selection-label svelte-1dbf58w"> </span></div>`);
+    var root$b = from_html(`<div class="share-overlay-ui"><!> <!> <!> <!></div>`);
 
     const $$css$b = {
     	hash: 'svelte-1dbf58w',
@@ -12875,8 +13421,8 @@
 
     		const target = e.target;
 
-    		// 1. If we are on the helper or toolbar, do nothing (keep current selection)
-    		if (target.closest('.hover-helper') || target.closest('.floating-bar')) {
+    		// 1. If we are on the helper, toolbar, color picker, or annotation editor, do nothing
+    		if (target.closest('.hover-helper') || target.closest('.floating-bar') || target.closest('.cv-color-picker') || target.closest('.cv-annotation-editor')) {
     			return;
     		}
 
@@ -12942,7 +13488,7 @@
     		// Ignore clicks on UI
     		const target = e.target;
 
-    		if (target.closest('.floating-bar') || target.closest('.hover-helper')) return;
+    		if (target.closest('.floating-bar') || target.closest('.hover-helper') || target.closest('.cv-color-picker') || target.closest('.cv-annotation-editor')) return;
 
     		// Disable drag on touch devices
     		if (window.matchMedia('(pointer: coarse)').matches) return;
@@ -13035,7 +13581,7 @@
 
     		const target = e.target;
 
-    		if (target.closest('.hover-helper') || target.closest('.floating-bar')) return;
+    		if (target.closest('.hover-helper') || target.closest('.floating-bar') || target.closest('.cv-color-picker') || target.closest('.cv-annotation-editor')) return;
 
     		// Intercept click on document
     		e.preventDefault();
@@ -13082,7 +13628,43 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var div_1 = root_1$5();
+    			var fragment = comment();
+    			var node_4 = first_child(fragment);
+
+    			each(node_4, 16, () => [...shareStore.selectedElements], (el) => el, ($$anchor, el) => {
+    				var fragment_1 = root_2$3();
+    				var node_5 = first_child(fragment_1);
+
+    				HighlightColorPicker(node_5, {
+    					get element() {
+    						return el;
+    					}
+    				});
+
+    				var node_6 = sibling(node_5, 2);
+
+    				HighlightAnnotationEditor(node_6, {
+    					get element() {
+    						return el;
+    					}
+    				});
+
+    				append($$anchor, fragment_1);
+    			});
+
+    			append($$anchor, fragment);
+    		};
+
+    		if_block(node_3, ($$render) => {
+    			if (shareStore.selectionMode === 'highlight') $$render(consequent);
+    		});
+    	}
+
+    	var node_7 = sibling(node_3, 2);
+
+    	{
+    		var consequent_1 = ($$anchor) => {
+    			var div_1 = root_3$2();
     			var span = child(div_1);
     			var text = child(span, true);
 
@@ -13109,8 +13691,8 @@
     			append($$anchor, div_1);
     		};
 
-    		if_block(node_3, ($$render) => {
-    			if (get(selectionBox)) $$render(consequent);
+    		if_block(node_7, ($$render) => {
+    			if (get(selectionBox)) $$render(consequent_1);
     		});
     	}
 
@@ -13119,39 +13701,11 @@
     	pop();
     }
 
-    /* focus-store.svelte.ts generated by Svelte v5.46.1 */
-
-    class FocusStore {
-    	#isActive = state(false);
-
-    	get isActive() {
-    		return get(this.#isActive);
-    	}
-
-    	set isActive(value) {
-    		set(this.#isActive, value, true);
-    	}
-
-    	setIsActive(isActive) {
-    		this.isActive = isActive;
-    	}
-
-    	/**
-    	 * Signals intent to exit focus mode.
-    	 * Logic is handled by the service observing this state.
-    	 */
-    	exit() {
-    		this.isActive = false;
-    	}
-    }
-
-    const focusStore = new FocusStore();
-
     var root_1$4 = from_html(`<div class="cv-focus-banner-wrapper svelte-1yqpn7e"><div id="cv-exit-focus-banner" data-cv-scroll-offset="" class="svelte-1yqpn7e"><span>You are viewing a focused selection.</span> <button class="svelte-1yqpn7e">Show Full Page</button></div></div>`);
 
     const $$css$a = {
     	hash: 'svelte-1yqpn7e',
-    	code: '.cv-focus-banner-wrapper.svelte-1yqpn7e {position:fixed;top:0;left:0;right:0;z-index:9000;background-color:#0078d4;box-shadow:0 2px 8px rgba(0, 0, 0, 0.2);font-family:system-ui, sans-serif;}#cv-exit-focus-banner.svelte-1yqpn7e {color:white;padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:16px;}button.svelte-1yqpn7e {background:white;color:#0078d4;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:600;}button.svelte-1yqpn7e:hover {background:#f0f0f0;}'
+    	code: '.cv-focus-banner-wrapper.svelte-1yqpn7e {position:fixed;top:0;left:0;right:0;z-index:9000;background-color:#f3cb52;box-shadow:0 2px 8px rgba(44, 26, 14, 0.15);font-family:system-ui, sans-serif;}#cv-exit-focus-banner.svelte-1yqpn7e {color:#2c1a0e;padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:16px;}button.svelte-1yqpn7e {background:#804b18;color:#fdf6e3;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:600;}button.svelte-1yqpn7e:hover {background:#c4853a;}'
     };
 
     function FocusBanner($$anchor, $$props) {
@@ -13395,7 +13949,7 @@
     	}
 
     	checkAndShow() {
-    		if (!this.persistence.isIntroSeen()) {
+    		if (!this.persistence.getItem('cv-intro-shown')) {
     			setTimeout(
     				() => {
     					this.showCallout = true;
@@ -13409,7 +13963,7 @@
     	dismiss() {
     		this.showCallout = false;
     		this.showPulse = false;
-    		this.persistence.markIntroSeen();
+    		this.persistence.setItem('cv-intro-shown', 'true');
     	}
     }
 
@@ -13417,26 +13971,23 @@
 
     const $$css$9 = {
     	hash: 'svelte-1vlfixd',
-    	code: '\n  /* Root should allow clicks to pass through to the page unless hitting checking/interactive element */.cv-widget-root {position:fixed;top:0;left:0;width:0;height:0;z-index:9999;pointer-events:none; /* Crucial: Allow clicks to pass through */\n\n    /* Light Theme Defaults */--cv-bg: white;--cv-text: rgba(0, 0, 0, 0.9);--cv-text-secondary: rgba(0, 0, 0, 0.6);--cv-border: rgba(0, 0, 0, 0.1);--cv-bg-hover: rgba(0, 0, 0, 0.05);--cv-primary: #3e84f4;--cv-primary-hover: #2563eb;--cv-danger: #dc2626;--cv-danger-bg: rgba(220, 38, 38, 0.1);--cv-shadow: rgba(0, 0, 0, 0.25);--cv-input-bg: white;--cv-input-border: rgba(0, 0, 0, 0.15);--cv-switch-bg: rgba(0, 0, 0, 0.1);--cv-switch-knob: white;--cv-modal-icon-bg: rgba(0, 0, 0, 0.08);--cv-icon-bg: rgba(255, 255, 255, 0.92);--cv-icon-color: rgba(0, 0, 0, 0.9);--cv-focus-ring: rgba(62, 132, 244, 0.2);--cv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);font-family:inherit; /* Inherit font from host */}\n\n  /* But interactive children need pointer-events back */.cv-widget-root > * {pointer-events:auto;}\n\n  /* Exception: ShareOverlay manages its own pointer events */.cv-widget-root .cv-share-overlay {pointer-events:none; /* Overlay often passes clicks until specialized handles active */}.cv-widget-root[data-theme=\'dark\'] {\n    /* Dark Theme Overrides */--cv-bg: #101722;--cv-text: #e2e8f0;--cv-text-secondary: rgba(255, 255, 255, 0.6);--cv-border: rgba(255, 255, 255, 0.1);--cv-bg-hover: rgba(255, 255, 255, 0.05);--cv-primary: #3e84f4;--cv-primary-hover: #60a5fa;--cv-danger: #f87171;--cv-danger-bg: rgba(248, 113, 113, 0.1);--cv-shadow: rgba(0, 0, 0, 0.5);--cv-input-bg: #1e293b;--cv-input-border: rgba(255, 255, 255, 0.1);--cv-switch-bg: rgba(255, 255, 255, 0.1);--cv-switch-knob: #e2e8f0;--cv-modal-icon-bg: rgba(255, 255, 255, 0.08);--cv-icon-bg: #1e293b;--cv-icon-color: #e2e8f0;--cv-focus-ring: rgba(62, 132, 244, 0.5);--cv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);}.cv-hidden {display:none !important;}'
+    	code: '\n  /* Root should allow clicks to pass through to the page unless hitting checking/interactive element */.cv-widget-root {position:fixed;top:0;left:0;width:0;height:0;z-index:9999;pointer-events:none; /* Crucial: Allow clicks to pass through */\n\n    /* Light Theme Defaults */--cv-bg: white;--cv-text: rgba(0, 0, 0, 0.9);--cv-text-secondary: rgba(0, 0, 0, 0.6);--cv-border: rgba(0, 0, 0, 0.1);--cv-bg-hover: rgba(0, 0, 0, 0.05);--cv-primary: #3e84f4;--cv-primary-hover: #2563eb;--cv-danger: #dc2626;--cv-danger-bg: rgba(220, 38, 38, 0.1);--cv-shadow: rgba(0, 0, 0, 0.25);--cv-input-bg: white;--cv-input-border: rgba(0, 0, 0, 0.15);--cv-switch-bg: rgba(0, 0, 0, 0.1);--cv-switch-knob: white;--cv-modal-icon-bg: rgba(0, 0, 0, 0.08);--cv-icon-bg: rgba(255, 255, 255, 0.92);--cv-icon-color: rgba(0, 0, 0, 0.9);--cv-focus-ring: rgba(62, 132, 244, 0.2);--cv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);--cv-modal-radius: 0.75rem;--cv-card-radius: 0.5rem;--cv-section-label-transform: uppercase;font-family:inherit; /* Inherit font from host */}\n\n  /* But interactive children need pointer-events back */.cv-widget-root > * {pointer-events:auto;}\n\n  /* Exception: ShareOverlay manages its own pointer events */.cv-widget-root .cv-share-overlay {pointer-events:none; /* Overlay often passes clicks until specialized handles active */}.cv-widget-root[data-theme=\'dark\'] {\n    /* Dark Theme Overrides */--cv-bg: #101722;--cv-text: #e2e8f0;--cv-text-secondary: rgba(255, 255, 255, 0.6);--cv-border: rgba(255, 255, 255, 0.1);--cv-bg-hover: rgba(255, 255, 255, 0.05);--cv-primary: #3e84f4;--cv-primary-hover: #60a5fa;--cv-danger: #f87171;--cv-danger-bg: rgba(248, 113, 113, 0.1);--cv-shadow: rgba(0, 0, 0, 0.5);--cv-input-bg: #1e293b;--cv-input-border: rgba(255, 255, 255, 0.1);--cv-switch-bg: rgba(255, 255, 255, 0.1);--cv-switch-knob: #e2e8f0;--cv-modal-icon-bg: rgba(255, 255, 255, 0.08);--cv-icon-bg: #1e293b;--cv-icon-color: #e2e8f0;--cv-focus-ring: rgba(62, 132, 244, 0.5);--cv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);--cv-modal-radius: 0.75rem;--cv-card-radius: 0.5rem;--cv-section-label-transform: uppercase;}.cv-hidden {display:none !important;}'
     };
 
     function UIRoot($$anchor, $$props) {
     	push($$props, true);
     	append_styles$1($$anchor, $$css$9);
 
+    	const { persistenceManager, resetToDefault } = getContext(RUNTIME_CALLBACKS_CTX);
+    	const iconSettingsStore = getContext(ICON_SETTINGS_CTX);
+
     	// --- Derived State ---
     	const storeConfig = user_derived(() => activeStateStore.config);
 
-    	const settingsEnabled = user_derived(() => $$props.options.settingsEnabled ?? true);
+    	const settingsEnabled = user_derived(() => $$props.options.settingsEnabled);
 
     	// --- Services ---
-    	const introManager = new IntroManager(
-    		{
-    			isIntroSeen: () => $$props.callbacks.isIntroSeen(),
-    			markIntroSeen: () => $$props.callbacks.markIntroSeen()
-    		},
-    		() => $$props.options.callout
-    	);
+    	const introManager = new IntroManager(persistenceManager, () => $$props.options.callout);
 
     	const router = new UrlActionRouter({
     		onOpenModal: openModal,
@@ -13446,9 +13997,6 @@
 
     	// --- UI State ---
     	let isModalOpen = state(false);
-
-    	let isResetting = state(false);
-    	let settingsIcon = state(void 0);
 
     	// --- Computed Props ---
     	// Share Configuration
@@ -13486,28 +14034,20 @@
     	}
 
     	function handleReset() {
-    		set(isResetting, true);
-    		$$props.callbacks.resetToDefault();
-    		get(settingsIcon)?.resetPosition();
+    		resetToDefault();
+    		iconSettingsStore.resetPositionAndCollapseState();
     		showToast('Settings reset to default');
-
-    		setTimeout(
-    			() => {
-    				set(isResetting, false);
-    				get(settingsIcon)?.resetPosition();
-    			},
-    			600
-    		);
     	}
 
     	function handleStartShare(mode = 'show') {
     		closeModal();
+    		focusStore.exit();
     		shareStore.setSelectionMode(mode);
     		shareStore.toggleActive(true);
     	}
 
-    	// --- Settings Visibility ---
-    	const shouldRenderSettings = user_derived(() => get(settingsEnabled) && (derivedStore.hasMenuOptions || uiStore.uiOptions.showTabGroups || get(isModalOpen)));
+    	// --- Icon Visibility ---
+    	const shouldShowIcon = user_derived(() => get(settingsEnabled) && !iconSettingsStore.isDismissed && (derivedStore.hasMenuOptions || uiStore.uiOptions.showTabGroups || get(isModalOpen)));
 
     	var div = root$a();
     	var node = child(div);
@@ -13589,58 +14129,42 @@
     				let $2 = user_derived(() => $$props.options.icon?.opacity);
     				let $3 = user_derived(() => $$props.options.icon?.scale);
 
-    				bind_this(
-    					SettingsIcon($$anchor, {
-    						get position() {
-    							return $$props.options.icon.position;
-    						},
+    				SettingsIcon($$anchor, {
+    					get position() {
+    						return $$props.options.icon.position;
+    					},
 
-    						get title() {
-    							return uiStore.uiOptions.title;
-    						},
+    					get title() {
+    						return uiStore.uiOptions.title;
+    					},
 
-    						get pulse() {
-    							return introManager.showPulse;
-    						},
+    					get pulse() {
+    						return introManager.showPulse;
+    					},
 
-    						onclick: openModal,
+    					onclick: openModal,
 
-    						get iconColor() {
-    							return get($0);
-    						},
+    					get iconColor() {
+    						return get($0);
+    					},
 
-    						get backgroundColor() {
-    							return get($1);
-    						},
+    					get backgroundColor() {
+    						return get($1);
+    					},
 
-    						get opacity() {
-    							return get($2);
-    						},
+    					get opacity() {
+    						return get($2);
+    					},
 
-    						get scale() {
-    							return get($3);
-    						},
-
-    						get getIconPosition() {
-    							return $$props.callbacks.getIconPosition;
-    						},
-
-    						get saveIconPosition() {
-    							return $$props.callbacks.saveIconPosition;
-    						},
-
-    						get clearIconPosition() {
-    							return $$props.callbacks.clearIconPosition;
-    						}
-    					}),
-    					($$value) => set(settingsIcon, $$value, true),
-    					() => get(settingsIcon)
-    				);
+    					get scale() {
+    						return get($3);
+    					}
+    				});
     			}
     		};
 
     		if_block(node_4, ($$render) => {
-    			if (get(shouldRenderSettings) && $$props.options.icon.show) $$render(consequent_2);
+    			if (get(shouldShowIcon) && $$props.options.icon.show) $$render(consequent_2);
     		});
     	}
 
@@ -13649,10 +14173,6 @@
     	{
     		var consequent_3 = ($$anchor) => {
     			Modal($$anchor, {
-    				get isResetting() {
-    					return get(isResetting);
-    				},
-
     				onclose: closeModal,
     				onreset: handleReset,
     				onstartShare: handleStartShare
@@ -13678,7 +14198,7 @@
             this.options = {
                 callbacks: options.callbacks,
                 container: options.container || document.body,
-                settingsEnabled: options.settingsEnabled ?? true,
+                settingsEnabled: options.settingsEnabled ?? false,
                 theme: options.panel?.theme || 'light',
                 callout: {
                     show: options.callout?.show ?? false,
@@ -13704,13 +14224,17 @@
             if (this.app) {
                 return;
             }
+            // Map context dependency injection directly into app root
+            const rootContext = new Map();
+            rootContext.set(ICON_SETTINGS_CTX, this.options.callbacks.iconSettings);
+            rootContext.set(RUNTIME_CALLBACKS_CTX, this.options.callbacks);
             // Mount Svelte App using Svelte 5 API
             this.app = mount(UIRoot, {
                 target: this.options.container,
                 props: {
-                    callbacks: this.options.callbacks,
                     options: this.options,
                 },
+                context: rootContext,
             });
         }
         /**
@@ -13727,14 +14251,11 @@
      * Initializes the UI manager (settings and share UI) using the provided config.
      */
     function initUIManager(runtime, config) {
-        const settingsEnabled = config.settings?.enabled !== false;
+        const settingsEnabled = config.settings?.enabled === true;
         const callbacks = {
             resetToDefault: () => runtime.resetToDefault(),
-            getIconPosition: () => runtime.getIconPosition(),
-            saveIconPosition: (offset) => runtime.saveIconPosition(offset),
-            clearIconPosition: () => runtime.clearIconPosition(),
-            isIntroSeen: () => runtime.isIntroSeen(),
-            markIntroSeen: () => runtime.markIntroSeen(),
+            iconSettings: runtime.iconSettingsStore,
+            persistenceManager: runtime.persistenceManager,
         };
         const uiManager = new CustardUIManager({
             callbacks,
@@ -14179,12 +14700,16 @@
         return groups;
     }
 
-    var root_1$3 = from_html(`<div class="cv-highlight-box svelte-1mz0neo"></div> <div> </div>`, 1);
+    var root_2$2 = from_html(`<button aria-label="Previous highlight">↑</button> <button aria-label="Next highlight">↓</button>`, 1);
+    var root_4 = from_html(`<span class="cv-annotation-text svelte-1mz0neo"> </span>`);
+    var root_5 = from_html(`<span class="cv-annotation-text svelte-1mz0neo"> </span>`);
+    var root_3$1 = from_html(`<button><!></button>`);
+    var root_1$3 = from_html(`<div class="cv-highlight-group svelte-1mz0neo"><div class="cv-highlight-marker svelte-1mz0neo"></div> <!> <div class="cv-highlight-pill svelte-1mz0neo"><a href="https://custardui.js.org" target="_blank" rel="noopener noreferrer" class="svelte-1mz0neo">CustardUI highlight↗</a></div> <!></div>`);
     var root$8 = from_html(`<div class="cv-highlight-overlay svelte-1mz0neo"></div>`);
 
     const $$css$7 = {
     	hash: 'svelte-1mz0neo',
-    	code: '.cv-highlight-overlay.svelte-1mz0neo {position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:8000;overflow:visible;}.cv-highlight-box.svelte-1mz0neo {position:absolute;\n    /* Slightly thicker border looks more like a marker stroke */border:5px solid #d13438;box-sizing:border-box;\n\n    /* Top-Left: 5px (Sharp)\n      Top-Right: 80px\n      Bottom-Right: 40px\n      Bottom-Left: 100px\n      (Separated by the slash for organic asymmetry)\n      Horizontal Radius / Vertical Radius\n    */border-radius:200px 15px 225px 15px / 15px 225px 15px 255px;\n\n    /* A subtle transform to make it look slightly tilted/imperfect */transform:rotate(-0.5deg);\n\n    /* Balanced shadows from before, but adjusted for the wobble */box-shadow:0 6px 15px rgba(0, 0, 0, 0.13),\n      /* The inset shadow now follows the wobbly border-radius */ inset 0 0 8px 1px\n        rgba(0, 0, 0, 0.12);pointer-events:none;\n    /* Smoother rendering for the wobbled edges */backface-visibility:hidden;opacity:0.92;}.cv-highlight-arrow.svelte-1mz0neo {position:absolute;font-size:35px; /* Slightly larger for the "marker" feel */color:#d13438;font-weight:bold;width:40px;height:40px;line-height:40px;text-align:center;\n\n    /* Hand-drawn style for the arrow: \n       1. Slight tilt to match the box\n       2. Multi-layer drop shadow to match the box\'s elevation \n    */transform:rotate(3deg);filter:drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.15)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));}\n\n  /* Animations set to run 4 times and stop (forwards) */.cv-highlight-arrow.left.svelte-1mz0neo {\n    animation: svelte-1mz0neo-floatArrowLeft 1.5s 4 forwards;}.cv-highlight-arrow.right.svelte-1mz0neo {\n    animation: svelte-1mz0neo-floatArrowRight 1.5s 4 forwards;}.cv-highlight-arrow.top.svelte-1mz0neo {\n    animation: svelte-1mz0neo-floatArrowTop 1.5s 4 forwards;}.cv-highlight-arrow.bottom.svelte-1mz0neo {\n    animation: svelte-1mz0neo-floatArrowBottom 1.5s 4 forwards;}\n\n  @keyframes svelte-1mz0neo-floatArrowLeft {\n    0%,\n    100% {\n      transform: translateX(0);\n    }\n    50% {\n      transform: translateX(-10px);\n    }\n  }\n  @keyframes svelte-1mz0neo-floatArrowRight {\n    0%,\n    100% {\n      transform: translateX(0);\n    }\n    50% {\n      transform: translateX(10px);\n    }\n  }\n  @keyframes svelte-1mz0neo-floatArrowTop {\n    0%,\n    100% {\n      transform: translate(-50%, 0);\n    }\n    50% {\n      transform: translate(-50%, -10px);\n    }\n  }\n  @keyframes svelte-1mz0neo-floatArrowBottom {\n    0%,\n    100% {\n      transform: translate(-50%, 0);\n    }\n    50% {\n      transform: translate(-50%, 10px);\n    }\n  }'
+    	code: '.cv-highlight-overlay.svelte-1mz0neo {position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:8000;}.cv-highlight-group.svelte-1mz0neo {position:absolute;pointer-events:none;}.cv-highlight-marker.svelte-1mz0neo {position:absolute;inset:0;pointer-events:none;\n    \n    /* Marker Style */border:3.5px solid var(--cv-highlight-color);border-radius:200px 15px 225px 15px / 15px 225px 15px 255px;transform:rotate(-0.5deg);\n    \n    /* 3D INTERNAL VOLUME:\n       Adds depth to the yellow border itself so it looks rounded.\n    */box-shadow:inset 0 1px 2px rgba(129, 73, 25, 0.2),\n      inset 0 -1px 1px rgba(255, 255, 255, 0.7);\n\n    /* 2A-3 DOUBLE LIGHT PROJECTION:\n       Stacks multiple drop-shadows to cast into the box interior.\n    */filter:/* Sharp contact shadow for grounding */\n      drop-shadow(0 2px 2px rgba(44, 26, 14, 0.15)) \n      /* Light Source A: Casts shadow from top-left to bottom-right */\n      drop-shadow(-8px 12px 10px rgba(44, 26, 14, 0.12))\n      /* Light Source B: Casts shadow from top-right to bottom-left */\n      drop-shadow(8px 12px 10px rgba(44, 26, 14, 0.12));\n    \n    animation: svelte-1mz0neo-highlightFadeIn 0.3s ease-out forwards;}.cv-nav-arrow.svelte-1mz0neo {position:absolute;z-index:10;right:-5px;pointer-events:auto;width:14px;height:14px;border-radius:100px;border:1px solid var(--cv-highlight-color);background:white;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:7px;color:#814919;font-weight:700;font-family:ui-sans-serif, system-ui, sans-serif;line-height:1;padding:0;box-shadow:0 4px 12px rgba(44, 26, 14, 0.15);opacity:0.7;}.cv-nav-arrow.svelte-1mz0neo:hover {opacity:1;}.cv-nav-arrow--up.svelte-1mz0neo {top:0px;}.cv-nav-arrow--down.svelte-1mz0neo {bottom:0px;}.cv-nav-arrow--hidden.svelte-1mz0neo {visibility:hidden;pointer-events:none;}.cv-highlight-pill.svelte-1mz0neo {position:absolute;z-index:10;bottom:-7px;right:14px;background:white;height:14px;padding:0 8px;display:flex;align-items:center;border-radius:100px;border:1px solid var(--cv-highlight-color);pointer-events:auto;white-space:nowrap;\n    \n    /* Stronger shadow to match the frame\'s new altitude */box-shadow:0 4px 12px rgba(44, 26, 14, 0.15);}.cv-highlight-pill.svelte-1mz0neo a:where(.svelte-1mz0neo) {font-size:8px;font-weight:700;color:#814919;text-decoration:none;font-family:ui-sans-serif, system-ui, sans-serif;text-transform:uppercase;letter-spacing:0.04em;line-height:1;}.cv-highlight-pill.svelte-1mz0neo:hover a:where(.svelte-1mz0neo) {opacity:0.8;}.cv-annotation-badge.svelte-1mz0neo {position:absolute;z-index:10;pointer-events:auto;max-width:180px;background:white;border:1.5px solid var(--cv-highlight-color);border-radius:6px;padding:4px 7px;cursor:pointer;box-shadow:0 2px 8px rgba(44, 26, 14, 0.15);font-family:ui-sans-serif, system-ui, sans-serif;text-align:left;}.cv-annotation-badge--expanded.svelte-1mz0neo {max-width:260px;z-index:20;}.cv-annotation-text.svelte-1mz0neo {display:block;font-size:9px;font-weight:600;color:#1a1a1a;line-height:1.4;word-break:break-word;white-space:pre-wrap;}\n\n  @keyframes svelte-1mz0neo-highlightFadeIn {\n    from { \n      opacity: 0; \n      transform: scale(0.98) rotate(-1deg); \n    }\n    to { \n      opacity: 1; \n      transform: scale(1) rotate(-0.5deg); \n    }\n  }'
     };
 
     function HighlightOverlay($$anchor, $$props) {
@@ -14192,83 +14717,155 @@
     	append_styles$1($$anchor, $$css$7);
 
     	let rects = user_derived(() => $$props.box.rects);
+    	let expandedSet = new SvelteSet();
 
-    	function getArrowClass(rect) {
-    		const viewportWidth = window.innerWidth;
-    		const rectLeftViewport = rect.left - (window.pageXOffset || document.documentElement.scrollLeft);
+    	function getColorHex(rect) {
+    		const key = rect.color ?? DEFAULT_COLOR_KEY;
 
-    		if (rectLeftViewport >= 50) return 'left';
-    		if (viewportWidth - (rectLeftViewport + rect.width) >= 50) return 'right';
-    		if (rect.top - (window.pageYOffset || document.documentElement.scrollTop) >= 50) return 'top';
-
-    		return 'bottom';
+    		return HIGHLIGHT_COLORS.find((c) => c.key === key)?.hex ?? HIGHLIGHT_COLORS[0].hex;
     	}
 
-    	function getArrowStyle(rect, direction) {
-    		let style = '';
+    	function scrollToRect(rect) {
+    		rect.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    	}
 
-    		if (direction === 'left') {
-    			style = `top: ${rect.top}px; left: ${rect.left - 40}px;`;
-    		} else if (direction === 'right') {
-    			style = `top: ${rect.top}px; left: ${rect.left + rect.width + 10}px;`;
-    		} else if (direction === 'top') {
-    			style = `top: ${rect.top - 40}px; left: ${rect.left + rect.width / 2 - 15}px;`;
+    	function toggleBadge(el) {
+    		if (expandedSet.has(el)) {
+    			expandedSet.delete(el);
     		} else {
-    			style = `top: ${rect.top + rect.height + 10}px; left: ${rect.left + rect.width / 2 - 15}px;`;
+    			expandedSet.add(el);
     		}
-
-    		return style;
     	}
 
-    	function getArrowSymbol(direction) {
-    		switch (direction) {
-    			case 'left':
-    				return '→';
+    	function getBadgeStyle(corner) {
+    		switch (corner) {
+    			case 'tl':
+    				return 'top: 6px; left: 6px;';
 
-    			case 'right':
-    				return '←';
+    			case 'tr':
+    				return 'top: 6px; right: 6px;';
 
-    			case 'top':
-    				return '↓';
+    			case 'bl':
+    				return 'bottom: 6px; left: 6px;';
 
-    			case 'bottom':
-    				return '↑';
+    			case 'br':
+    				return 'bottom: 6px; right: 6px;';
     		}
-
-    		return '';
     	}
 
     	var div = root$8();
 
-    	each(div, 21, () => get(rects), (rect) => `${rect.top}-${rect.left}-${rect.width}-${rect.height}`, ($$anchor, rect) => {
-    		const dir = user_derived(() => getArrowClass(get(rect)));
-    		var fragment = root_1$3();
-    		var div_1 = first_child(fragment);
-    		var div_2 = sibling(div_1, 2);
-    		var text = child(div_2, true);
+    	each(div, 23, () => get(rects), (rect) => rect.element, ($$anchor, rect, i) => {
+    		var div_1 = root_1$3();
+    		var node = sibling(child(div_1), 2);
 
-    		reset(div_2);
+    		{
+    			var consequent = ($$anchor) => {
+    				var fragment = root_2$2();
+    				var button = first_child(fragment);
+    				let classes;
 
-    		template_effect(
-    			($0, $1) => {
-    				set_style(div_1, `top: ${get(rect).top ?? ''}px; left: ${get(rect).left ?? ''}px; width: ${get(rect).width ?? ''}px; height: ${get(rect).height ?? ''}px;`);
-    				set_class(div_2, 1, `cv-highlight-arrow ${get(dir) ?? ''}`, 'svelte-1mz0neo');
-    				set_style(div_2, $0);
-    				set_text(text, $1);
-    			},
-    			[
-    				() => getArrowStyle(get(rect), get(dir)),
-    				() => getArrowSymbol(get(dir))
-    			]
-    		);
+    				button.__click = () => scrollToRect(get(rects)[get(i) - 1]);
 
-    		append($$anchor, fragment);
+    				var button_1 = sibling(button, 2);
+    				let classes_1;
+
+    				button_1.__click = () => scrollToRect(get(rects)[get(i) + 1]);
+
+    				template_effect(() => {
+    					classes = set_class(button, 1, 'cv-nav-arrow cv-nav-arrow--up svelte-1mz0neo', null, classes, { 'cv-nav-arrow--hidden': get(i) === 0 });
+    					classes_1 = set_class(button_1, 1, 'cv-nav-arrow cv-nav-arrow--down svelte-1mz0neo', null, classes_1, { 'cv-nav-arrow--hidden': get(i) === get(rects).length - 1 });
+    				});
+
+    				append($$anchor, fragment);
+    			};
+
+    			if_block(node, ($$render) => {
+    				if (get(rects).length > 1) $$render(consequent);
+    			});
+    		}
+
+    		var node_1 = sibling(node, 4);
+
+    		{
+    			var consequent_2 = ($$anchor) => {
+    				var button_2 = root_3$1();
+    				let classes_2;
+
+    				button_2.__click = (e) => {
+    					e.stopPropagation();
+    					toggleBadge(get(rect).element);
+    				};
+
+    				var node_2 = child(button_2);
+
+    				{
+    					var consequent_1 = ($$anchor) => {
+    						var span = root_4();
+    						var text = child(span, true);
+
+    						reset(span);
+    						template_effect(() => set_text(text, get(rect).annotation));
+    						append($$anchor, span);
+    					};
+
+    					var alternate = ($$anchor) => {
+    						var span_1 = root_5();
+    						var text_1 = child(span_1, true);
+
+    						reset(span_1);
+
+    						template_effect(($0) => set_text(text_1, $0), [
+    							() => get(rect).annotation.length > ANNOTATION_PREVIEW_LENGTH
+    								? get(rect).annotation.slice(0, ANNOTATION_PREVIEW_LENGTH) + '…'
+    								: get(rect).annotation
+    						]);
+
+    						append($$anchor, span_1);
+    					};
+
+    					if_block(node_2, ($$render) => {
+    						if (expandedSet.has(get(rect).element)) $$render(consequent_1); else $$render(alternate, false);
+    					});
+    				}
+
+    				reset(button_2);
+
+    				template_effect(
+    					($0, $1, $2) => {
+    						classes_2 = set_class(button_2, 1, 'cv-annotation-badge svelte-1mz0neo', null, classes_2, $0);
+    						set_style(button_2, $1);
+    						set_attribute(button_2, 'aria-label', $2);
+    					},
+    					[
+    						() => ({
+    							'cv-annotation-badge--expanded': expandedSet.has(get(rect).element)
+    						}),
+
+    						() => getBadgeStyle(get(rect).annotationCorner ?? DEFAULT_ANNOTATION_CORNER),
+    						() => expandedSet.has(get(rect).element) ? 'Collapse annotation' : 'Expand annotation'
+    					]
+    				);
+
+    				append($$anchor, button_2);
+    			};
+
+    			if_block(node_1, ($$render) => {
+    				if (get(rect).annotation) $$render(consequent_2);
+    			});
+    		}
+
+    		reset(div_1);
+    		template_effect(($0) => set_style(div_1, `top: ${get(rect).top ?? ''}px; left: ${get(rect).left ?? ''}px; width: ${get(rect).width ?? ''}px; height: ${get(rect).height ?? ''}px; --cv-highlight-color: ${$0 ?? ''};`), [() => getColorHex(get(rect))]);
+    		append($$anchor, div_1);
     	});
 
     	reset(div);
     	append($$anchor, div);
     	pop();
     }
+
+    delegate(['click']);
 
     /**
      * Groups elements by their parent.
@@ -14293,7 +14890,7 @@
      *                Abstracted to allow testing without real DOM/layout.
      * @param getScroll Callback to retrieve current scroll position {scrollTop, scrollLeft}.
      */
-    function calculateMergedRects(groups, getRect, getScroll) {
+    function calculateMergedRects(groups, getRect, getScroll, colorMap, annotationMap) {
         const mergedRects = [];
         const { scrollTop, scrollLeft } = getScroll();
         // Iterate groups to ensure strict adjacency
@@ -14302,7 +14899,7 @@
                 continue;
             // Optimization if only 1 child, no need to scan parent
             if (siblingsInGroup.length === 1) {
-                addMergedRect(mergedRects, siblingsInGroup, getRect, scrollTop, scrollLeft);
+                addMergedRect(mergedRects, siblingsInGroup, getRect, scrollTop, scrollLeft, colorMap, annotationMap);
                 continue;
             }
             // O(1) lookup
@@ -14313,24 +14910,41 @@
             const children = Array.from(parent.children);
             for (const child of children) {
                 if (child instanceof HTMLElement && siblingsSet.has(child)) {
+                    // Flush if metadata differs from batch anchor
+                    if (currentBatch.length > 0 &&
+                        !sameMetadata(currentBatch[0], child, colorMap, annotationMap)) {
+                        addMergedRect(mergedRects, currentBatch, getRect, scrollTop, scrollLeft, colorMap, annotationMap);
+                        currentBatch = [];
+                    }
                     currentBatch.push(child);
                 }
                 else {
                     // Break in continuity
                     if (currentBatch.length > 0) {
-                        addMergedRect(mergedRects, currentBatch, getRect, scrollTop, scrollLeft);
+                        addMergedRect(mergedRects, currentBatch, getRect, scrollTop, scrollLeft, colorMap, annotationMap);
                         currentBatch = [];
                     }
                 }
             }
             // Finalize last batch
             if (currentBatch.length > 0) {
-                addMergedRect(mergedRects, currentBatch, getRect, scrollTop, scrollLeft);
+                addMergedRect(mergedRects, currentBatch, getRect, scrollTop, scrollLeft, colorMap, annotationMap);
             }
         }
         return mergedRects;
     }
-    function addMergedRect(resultList, elements, getRect, scrollTop, scrollLeft) {
+    function sameMetadata(a, b, colorMap, annotationMap) {
+        if ((colorMap?.get(a) ?? undefined) !== (colorMap?.get(b) ?? undefined))
+            return false;
+        const annA = annotationMap?.get(a);
+        const annB = annotationMap?.get(b);
+        if (annA?.text !== annB?.text)
+            return false;
+        if (annA?.corner !== annB?.corner)
+            return false;
+        return true;
+    }
+    function addMergedRect(resultList, elements, getRect, scrollTop, scrollLeft, colorMap, annotationMap) {
         if (elements.length === 0)
             return;
         let minTop = Infinity;
@@ -14353,7 +14967,7 @@
                 maxBottom = bottom;
         });
         const PADDING = 10;
-        resultList.push({
+        const rect = {
             top: minTop - PADDING,
             left: minLeft - PADDING,
             width: maxRight - minLeft + PADDING * 2,
@@ -14361,7 +14975,16 @@
             right: maxRight + PADDING,
             bottom: maxBottom + PADDING,
             element: elements[0],
-        });
+        };
+        const color = colorMap?.get(elements[0]);
+        if (color !== undefined)
+            rect.color = color;
+        const annotation = annotationMap?.get(elements[0]);
+        if (annotation !== undefined) {
+            rect.annotation = annotation.text;
+            rect.annotationCorner = annotation.corner;
+        }
+        resultList.push(rect);
     }
 
     /* highlight-service.svelte.ts generated by Svelte v5.46.1 */
@@ -14389,6 +15012,8 @@
     	state = new HighlightState();
     	resizeObserver;
     	activeTargets = [];
+    	activeColors = new Map();
+    	activeAnnotations = new Map();
     	onWindowResize = () => this.updatePositions();
 
     	constructor(rootEl) {
@@ -14399,18 +15024,44 @@
     		});
     	}
 
-    	apply(encodedDescriptors) {
+    	resolveTargets(encodedDescriptors) {
     		const descriptors = deserialize(encodedDescriptors);
 
-    		if (!descriptors || descriptors.length === 0) return;
+    		if (!descriptors || descriptors.length === 0) return [];
 
     		const targets = [];
 
     		descriptors.forEach((desc) => {
     			const matchingEls = resolve(this.rootEl, desc);
 
+    			if (matchingEls && matchingEls.length > 0) targets.push(...matchingEls);
+    		});
+
+    		return targets;
+    	}
+
+    	apply(encodedDescriptors) {
+    		const descriptors = deserialize(encodedDescriptors);
+
+    		if (!descriptors || descriptors.length === 0) return;
+
+    		const targets = [];
+    		const colors = new Map();
+    		const annotations = new Map();
+
+    		descriptors.forEach((desc) => {
+    			const matchingEls = resolve(this.rootEl, desc);
+
     			if (matchingEls && matchingEls.length > 0) {
     				targets.push(...matchingEls);
+
+    				if (desc.color) {
+    					matchingEls.forEach((el) => colors.set(el, desc.color));
+    				}
+
+    				if (desc.annotation && desc.annotationCorner) {
+    					matchingEls.forEach((el) => annotations.set(el, { text: desc.annotation, corner: desc.annotationCorner }));
+    				}
     			}
     		});
 
@@ -14433,6 +15084,9 @@
     		// Create Overlay across the entire page (App will be mounted into it)
     		this.activeTargets = targets;
 
+    		this.activeColors = colors;
+    		this.activeAnnotations = annotations;
+
     		// Start observing
     		this.activeTargets.forEach((t) => this.resizeObserver.observe(t));
 
@@ -14440,16 +15094,11 @@
     		window.addEventListener('resize', this.onWindowResize);
     		this.renderHighlightOverlay();
 
-    		// Scroll first target into view with header offset awareness
-    		const firstTarget = targets[0];
+    		// Scroll topmost highlighted box into view
+    		const firstRect = this.state.rects[0];
 
-    		if (firstTarget) {
-    			// Use double-RAF to ensure layout stability (e.g. Svelte updates, animations)
-    			requestAnimationFrame(() => {
-    				requestAnimationFrame(() => {
-    					scrollToElement(firstTarget);
-    				});
-    			});
+    		if (firstRect) {
+    			this.scrollToTargetSafely(firstRect.element);
     		}
     	}
 
@@ -14458,6 +15107,8 @@
     		this.resizeObserver.disconnect();
     		window.removeEventListener('resize', this.onWindowResize);
     		this.activeTargets = [];
+    		this.activeColors.clear();
+    		this.activeAnnotations.clear();
     		this.state.rects = [];
 
     		const overlay = document.getElementById(ARROW_OVERLAY_ID);
@@ -14492,6 +15143,45 @@
     		this.overlayApp = mount(HighlightOverlay, { target: overlay, props: { box: this.state } });
     	}
 
+    	async scrollToTarget(element) {
+    		const currentShown = activeStateStore.state.shownToggles ?? [];
+    		const currentPeek = activeStateStore.state.peekToggles ?? [];
+
+    		// Walk ancestors, collecting toggle IDs that need expansion
+    		const needsExpansion = [];
+
+    		let current = element.parentElement;
+
+    		while (current) {
+    			if (current.tagName.toLowerCase() === 'cv-toggle') {
+    				(current.getAttribute('toggle-id') || '').split(/\s+/).filter(Boolean).forEach((id) => {
+    					if (!currentShown.includes(id)) needsExpansion.push(id);
+    				});
+    			}
+
+    			current = current.parentElement;
+    		}
+
+    		// Expand any collapsed/peek ancestor toggles
+    		if (needsExpansion.length > 0) {
+    			activeStateStore.setToggles([...new Set([...currentShown, ...needsExpansion])], currentPeek.filter((id) => !needsExpansion.includes(id)));
+    		}
+
+    		// Wait for CSS transitions if any toggles are peek, were just expanded, or are hidden (collapsing)
+    		if (needsExpansion.length > 0 || currentPeek.length > 0 || derivedStore.hiddenToggleIds.length > 0) {
+    			// 350ms = 300ms CSS transition + 50ms buffer
+    			await new Promise((resolve) => setTimeout(resolve, 350));
+    		}
+
+    		element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    	}
+
+    	scrollToTargetSafely(target) {
+    		void this.scrollToTarget(target).catch((error) => {
+    			console.error('Failed to scroll to target', error);
+    		});
+    	}
+
     	updatePositions() {
     		if (this.activeTargets.length === 0) {
     			this.state.rects = [];
@@ -14502,11 +15192,17 @@
     		// Group by Parent (Siblings)
     		const groups = groupSiblings(this.activeTargets);
 
-    		// Calculate Union Rect for each group
-    		this.state.rects = calculateMergedRects(groups, (el) => el.getBoundingClientRect(), () => ({
-    			scrollTop: window.pageYOffset || document.documentElement.scrollTop,
-    			scrollLeft: window.pageXOffset || document.documentElement.scrollLeft
-    		}));
+    		// Calculate Union Rect for each group, sorted top-to-bottom
+    		this.state.rects = calculateMergedRects(
+    			groups,
+    			(el) => el.getBoundingClientRect(),
+    			() => ({
+    				scrollTop: window.pageYOffset || document.documentElement.scrollTop,
+    				scrollLeft: window.pageXOffset || document.documentElement.scrollLeft
+    			}),
+    			this.activeColors,
+    			this.activeAnnotations
+    		).sort((a, b) => a.top - b.top);
     	}
     }
 
@@ -14545,7 +15241,7 @@
     			// Store safety check (Store changes affect UI)
     			user_effect(() => {
     				if (!focusStore.isActive && (document.body.classList.contains(BODY_SHOW_CLASS) || document.body.classList.contains(BODY_HIGHLIGHT_CLASS))) {
-    					this.exitShowMode(false);
+    					this.exitShowMode(true);
     				}
     			});
     		});
@@ -14574,17 +15270,39 @@
     		const showDescriptors = url.searchParams.get(SHOW_PARAM);
     		const hideDescriptors = url.searchParams.get(HIDE_PARAM);
     		const highlightDescriptors = url.searchParams.get(HIGHLIGHT_PARAM);
+    		const hasAnyMode = showDescriptors || hideDescriptors || highlightDescriptors;
 
-    		if (showDescriptors) {
-    			this.applyShowMode(showDescriptors);
-    		} else if (hideDescriptors) {
-    			this.applyHideMode(hideDescriptors);
-    		} else if (highlightDescriptors) {
-    			this.applyHighlightMode(highlightDescriptors);
-    		} else {
+    		if (!hasAnyMode) {
     			if (document.body.classList.contains(BODY_SHOW_CLASS) || document.body.classList.contains(BODY_HIGHLIGHT_CLASS)) {
     				this.exitShowMode(false);
     			}
+
+    			return;
+    		}
+
+    		// Clear any existing active state once before re-applying
+    		if (document.body.classList.contains(BODY_SHOW_CLASS) || document.body.classList.contains(BODY_HIGHLIGHT_CLASS)) {
+    			this.exitShowMode(false);
+    		}
+
+    		// Pre-resolve highlight targets so show/hide modes can account for them
+    		const highlightTargets = highlightDescriptors
+    			? this.highlightService.resolveTargets(highlightDescriptors)
+    			: [];
+
+    		// Apply show or hide (mutually exclusive with each other).
+    		// Pass highlight targets so they are kept visible in show mode / not hidden in hide mode.
+    		if (showDescriptors) {
+    			this.applyShowMode(showDescriptors, highlightTargets);
+    		} else if (hideDescriptors) {
+    			this.applyHideMode(hideDescriptors, highlightTargets);
+    		}
+
+    		// Apply highlight independently — can coexist with show/hide.
+    		// Call highlightService.apply() directly to skip applyHighlightMode()'s guard,
+    		// which would otherwise see BODY_SHOW_CLASS and clear the show mode above.
+    		if (highlightDescriptors) {
+    			this.highlightService.apply(highlightDescriptors);
     		}
     	}
 
@@ -14592,7 +15310,7 @@
     	 * Applies focus mode to the specified descriptors.
     	 * @param encodedDescriptors - The encoded descriptors to apply.
     	 */
-    	applyShowMode(encodedDescriptors) {
+    	applyShowMode(encodedDescriptors, keepTargets = []) {
     		// Check if we are already in the right state to avoid re-rendering loops if feasible
     		if (document.body.classList.contains(BODY_SHOW_CLASS) || document.body.classList.contains(BODY_HIGHLIGHT_CLASS)) {
     			// If we are already active, we might want to check if descriptors changed?
@@ -14630,10 +15348,12 @@
     		focusStore.setIsActive(true);
 
     		document.body.classList.add(BODY_SHOW_CLASS);
-    		this.renderShowView(targets);
+
+    		// Merge keepTargets (e.g. highlight targets) so they are not hidden by show mode
+    		this.renderShowView([...targets, ...keepTargets]);
     	}
 
-    	applyHideMode(encodedDescriptors) {
+    	applyHideMode(encodedDescriptors, excludeTargets = []) {
     		if (document.body.classList.contains(BODY_SHOW_CLASS) || document.body.classList.contains(BODY_HIGHLIGHT_CLASS)) {
     			this.exitShowMode(false);
     		}
@@ -14667,7 +15387,13 @@
     		focusStore.setIsActive(true);
 
     		document.body.classList.add(BODY_SHOW_CLASS);
-    		this.renderHiddenView(targets);
+
+    		// Exclude highlight targets from being hidden so they stay visible
+    		const excludeSet = new Set(excludeTargets);
+
+    		const filteredTargets = excludeTargets.length > 0 ? targets.filter((t) => !excludeSet.has(t)) : targets;
+
+    		this.renderHiddenView(filteredTargets);
     	}
 
     	applyHighlightMode(encodedDescriptors) {
@@ -15122,6 +15848,7 @@
     	rootEl;
     	persistenceManager;
     	focusService;
+    	iconSettingsStore;
     	observer;
     	destroyEffectRoot;
     	onHashChange;
@@ -15129,6 +15856,7 @@
     	constructor(opt) {
     		this.rootEl = opt.rootEl || document.body;
     		this.persistenceManager = new PersistenceManager(opt.storageKey);
+    		this.iconSettingsStore = new IconSettingsStore(this.persistenceManager);
 
     		// Initialize all store singletons with config
     		this.initStores(opt.configFile);
@@ -15317,30 +16045,6 @@
     		activeStateStore.reset();
     		uiStore.reset();
     		uiStore.isTabGroupNavHeadingVisible = true;
-    	}
-
-    	// --- Icon Position Persistence ---
-    	getIconPosition() {
-    		const raw = this.persistenceManager.getItem('cv-settings-icon-offset');
-
-    		return raw ? parseFloat(raw) : null;
-    	}
-
-    	saveIconPosition(offset) {
-    		this.persistenceManager.setItem('cv-settings-icon-offset', offset.toString());
-    	}
-
-    	clearIconPosition() {
-    		this.persistenceManager.removeItem('cv-settings-icon-offset');
-    	}
-
-    	// --- Intro Callout Persistence ---
-    	isIntroSeen() {
-    		return !!this.persistenceManager.getItem('cv-intro-shown');
-    	}
-
-    	markIntroSeen() {
-    		this.persistenceManager.setItem('cv-intro-shown', 'true');
     	}
 
     	destroy() {
