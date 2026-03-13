@@ -229,7 +229,8 @@
     {
       "src": "design.md",
       "headings": {
-        "colors": "Colors:"
+        "colors": "Colors:",
+        "word-colors": "Word Colors"
       },
       "headingKeywords": {}
     },
@@ -239,6 +240,7 @@
       "headings": {
         "changelog": "Changelog",
         "v2-0-0": "v2.0.0",
+        "features-added": "Features Added",
         "v1-7-0": "v1.7.0"
       },
       "headingKeywords": {}
@@ -371,6 +373,7 @@
       "src": "index.md",
       "title": "CustardUI - Personalized, Interactive Static Websites",
       "headings": {
+        "custardui": "CustardUI",
         "one-site-many-readers-zero-compromise": "One site. Many readers. Zero compromise.",
         "memory-persistent-tabs": "Memory-Persistent Tabs",
         "content-toggles": "Content Toggles",
