@@ -178,7 +178,7 @@
       "title": "Author Guide - Getting Started",
       "headings": {
         "getting-started": "Getting Started",
-        "what-is-custardui": "What is CustardUI?",
+        "what-s-in-this-guide": "What's in this guide",
         "prerequisites": "Prerequisites",
         "quick-start": "Quick Start",
         "1-add-the-script-tag": "1. Add the Script Tag",
@@ -371,21 +371,14 @@
     },
     {
       "src": "index.md",
-      "title": "CustardUI - Personalized, Interactive Static Websites",
+      "title": "CustardUI - Your docs, shaped for every reader",
       "headings": {
         "custardui": "CustardUI",
-        "one-site-many-readers-zero-compromise": "One site. Many readers. Zero compromise.",
-        "memory-persistent-tabs": "Memory-Persistent Tabs",
-        "content-toggles": "Content Toggles",
-        "dynamic-placeholders": "Dynamic Placeholders",
-        "focus-and-amp-share": "Focus &amp; Share",
-        "adaptations": "Adaptations",
-        "zero-backend-any-site": "Zero Backend, Any Site",
+        "static-sites-don-t-have-to-be-static": "Static sites don't have to be static.",
         "answer-questions-with-a-link": "Answer questions with a link.",
         "one-resource-every-audience": "One resource. Every audience.",
         "up-and-running-in-minutes": "Up and running in minutes.",
-        "a-taste-of-custardui": "A taste of CustardUI",
-        "make-your-site-work-for-every-reader": "Make your site work for every reader."
+        "your-docs-shaped-for-every-reader": "Your docs, shaped for every reader."
       },
       "headingKeywords": {}
     },

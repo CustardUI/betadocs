@@ -10065,7 +10065,7 @@
     	append($$anchor, svg);
     }
 
-    var root_1$d = from_html(`<button type="button" class="cv-dismiss-btn svelte-122ln5" aria-label="Dismiss settings icon">✕</button>`);
+    var root_1$e = from_html(`<button type="button" class="cv-dismiss-btn svelte-122ln5" aria-label="Dismiss settings icon">✕</button>`);
     var root$s = from_html(`<div role="none"><button type="button" class="cv-settings-main-btn svelte-122ln5"><span class="cv-gear svelte-122ln5"><!></span></button> <button type="button" class="cv-collapse-btn svelte-122ln5" aria-label="Collapse settings icon"> </button> <!></div>`);
 
     const $$css$m = {
@@ -10320,7 +10320,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var button_2 = root_1$d();
+    			var button_2 = root_1$e();
 
     			button_2.__click = (e) => {
     				e.stopPropagation();
@@ -11090,8 +11090,8 @@
         });
     }
 
-    var root_1$c = from_html(`<p class="description svelte-gwkhja"> </p>`);
-    var root_2$a = from_html(`<button type="button"> </button>`);
+    var root_1$d = from_html(`<p class="description svelte-gwkhja"> </p>`);
+    var root_2$b = from_html(`<button type="button"> </button>`);
     var root$k = from_html(`<div class="card svelte-gwkhja"><div class="content svelte-gwkhja"><div><p class="title svelte-gwkhja"> </p> <!></div> <div class="segmented svelte-gwkhja" role="group" aria-label="Visibility"></div></div></div>`);
 
     const $$css$l = {
@@ -11118,7 +11118,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var p_1 = root_1$c();
+    			var p_1 = root_1$d();
     			var text_1 = child(p_1, true);
 
     			reset(p_1);
@@ -11136,7 +11136,7 @@
     	var div_3 = sibling(div_2, 2);
 
     	each(div_3, 20, () => ['hide', 'peek', 'show'], (option) => option, ($$anchor, option) => {
-    		var button = root_2$a();
+    		var button = root_2$b();
 
     		button.__click = () => {
     			value(option);
@@ -11169,8 +11169,8 @@
 
     delegate(['click']);
 
-    var root_1$b = from_html(`<p class="description svelte-uub3h8"> </p>`);
-    var root_2$9 = from_html(`<option> </option>`);
+    var root_1$c = from_html(`<p class="description svelte-uub3h8"> </p>`);
+    var root_2$a = from_html(`<option> </option>`);
     var root$j = from_html(`<div class="root svelte-uub3h8"><div class="header svelte-uub3h8"><label class="label svelte-uub3h8"> </label> <!></div> <select class="select svelte-uub3h8"></select></div>`);
 
     const $$css$k = {
@@ -11203,7 +11203,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var p = root_1$b();
+    			var p = root_1$c();
     			var text_1 = child(p, true);
 
     			reset(p);
@@ -11223,7 +11223,7 @@
     	select.__change = onChange;
 
     	each(select, 21, () => $$props.group.tabs, (tab) => tab.tabId, ($$anchor, tab) => {
-    		var option = root_2$9();
+    		var option = root_2$a();
     		var text_2 = child(option, true);
 
     		reset(option);
@@ -11356,13 +11356,13 @@
         }
     }
 
-    var root_1$a = from_html(`<button type="button">Customize</button>`);
+    var root_1$b = from_html(`<button type="button">Customize</button>`);
     var root_3$4 = from_html(`<p class="description svelte-16uy9h6"> </p>`);
     var root_5 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Toggles</div> <div class="toggles-container svelte-16uy9h6"></div></div>`);
     var root_7 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Placeholders</div> <div class="placeholders-container svelte-16uy9h6"></div></div>`);
     var root_9 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Tab Groups</div> <div class="tabgroups-container svelte-16uy9h6"><div class="tabgroup-card header-card svelte-16uy9h6" role="group"><div class="tabgroup-row svelte-16uy9h6"><div class="logo-box svelte-16uy9h6" id="cv-nav-icon-box"><div class="nav-icon svelte-16uy9h6"><!></div></div> <div class="tabgroup-info svelte-16uy9h6"><div class="tabgroup-title-container"><p class="tabgroup-title svelte-16uy9h6">Show only the selected tab</p></div> <p class="tabgroup-description svelte-16uy9h6">Hide the navigation headers</p></div> <label class="toggle-switch nav-toggle svelte-16uy9h6"><input class="nav-pref-input svelte-16uy9h6" type="checkbox" aria-label="Show only the selected tab"/> <span class="switch-bg svelte-16uy9h6"></span> <span class="switch-knob svelte-16uy9h6"></span></label></div></div> <div class="tab-groups-list svelte-16uy9h6"></div></div></div>`);
     var root_4$1 = from_html(`<!> <!> <!>`, 1);
-    var root_2$8 = from_html(`<div class="tab-content active svelte-16uy9h6"><!> <!></div>`);
+    var root_2$9 = from_html(`<div class="tab-content active svelte-16uy9h6"><!> <!></div>`);
     var root_16 = from_html(`<button type="button" class="share-action-btn copy-url-btn svelte-16uy9h6"><span class="btn-icon svelte-16uy9h6"><!></span> <span><!></span></button>`);
 
     var root_15 = from_html(`<div class="tab-content active svelte-16uy9h6"><div class="share-content svelte-16uy9h6"><div class="share-instruction svelte-16uy9h6">Create a shareable link for your current customization, or select specific parts of
@@ -11554,7 +11554,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var button_1 = root_1$a();
+    			var button_1 = root_1$b();
 
     			button_1.__click = () => set(activeTab, 'customize');
     			template_effect(() => set_class(button_1, 1, `tab ${get(activeTab) === 'customize' ? 'active' : ''}`, 'svelte-16uy9h6'));
@@ -11575,7 +11575,7 @@
 
     	{
     		var consequent_7 = ($$anchor) => {
-    			var div_6 = root_2$8();
+    			var div_6 = root_2$9();
     			var node_4 = child(div_6);
 
     			{
@@ -12756,7 +12756,7 @@
     	return zoom;
     }
 
-    var root_1$9 = from_html(`<div role="alert" aria-live="polite"> </div>`);
+    var root_1$a = from_html(`<div role="alert" aria-live="polite"> </div>`);
     var root$g = from_html(`<div class="toast-container svelte-14irt8g"></div>`);
 
     const $$css$h = {
@@ -12772,7 +12772,7 @@
     	var div = root$g();
 
     	each(div, 13, () => toast.items, (t) => t.id, ($$anchor, t) => {
-    		var div_1 = root_1$9();
+    		var div_1 = root_1$a();
     		var text = child(div_1, true);
 
     		reset(div_1);
@@ -12880,9 +12880,9 @@
 
     delegate(['click']);
 
-    var root_2$7 = from_html(`<span class="id-badge svelte-64gpkh" title="ID detection active"> </span>`);
+    var root_2$8 = from_html(`<span class="id-badge svelte-64gpkh" title="ID detection active"> </span>`);
     var root_3$3 = from_html(`<button type="button" class="action-btn up svelte-64gpkh" title="Select Parent">↰</button>`);
-    var root_1$8 = from_html(`<div class="hover-helper svelte-64gpkh"><div class="info svelte-64gpkh"><span class="tag svelte-64gpkh"> </span> <!></div> <button type="button"> </button> <!></div>`);
+    var root_1$9 = from_html(`<div class="hover-helper svelte-64gpkh"><div class="info svelte-64gpkh"><span class="tag svelte-64gpkh"> </span> <!></div> <button type="button"> </button> <!></div>`);
 
     const $$css$f = {
     	hash: 'svelte-64gpkh',
@@ -12990,7 +12990,7 @@
 
     	{
     		var consequent_2 = ($$anchor) => {
-    			var div = root_1$8();
+    			var div = root_1$9();
     			var div_1 = child(div);
     			var span = child(div_1);
     			var text = child(span, true);
@@ -13001,7 +13001,7 @@
 
     			{
     				var consequent = ($$anchor) => {
-    					var span_1 = root_2$7();
+    					var span_1 = root_2$8();
     					var text_1 = child(span_1);
 
     					reset(span_1);
@@ -13065,8 +13065,8 @@
 
     delegate(['click']);
 
-    var root_2$6 = from_html(`<button type="button"></button>`);
-    var root_1$7 = from_html(`<div class="cv-color-swatches svelte-1r78n4c" role="none"></div>`);
+    var root_2$7 = from_html(`<button type="button"></button>`);
+    var root_1$8 = from_html(`<div class="cv-color-swatches svelte-1r78n4c" role="none"></div>`);
     var root$e = from_html(`<div class="cv-color-picker svelte-1r78n4c" role="none"><button type="button" class="cv-color-trigger svelte-1r78n4c" title="Choose highlight color" aria-label="Choose highlight color"><span class="cv-color-dot svelte-1r78n4c"></span></button> <!></div>`);
 
     const $$css$e = {
@@ -13150,10 +13150,10 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var div_1 = root_1$7();
+    			var div_1 = root_1$8();
 
     			each(div_1, 21, () => HIGHLIGHT_COLORS, index, ($$anchor, color) => {
-    				var button_1 = root_2$6();
+    				var button_1 = root_2$7();
     				let classes;
 
     				button_1.__click = (e) => handleSwatchClick(e, get(color).key);
@@ -13193,8 +13193,8 @@
 
     delegate(['click', 'dblclick']);
 
-    var root_1$6 = from_html(`<span class="cv-annotation-tab-preview svelte-1r1spmr"> </span>`);
-    var root_2$5 = from_html(`<span class="cv-annotation-tab-icon svelte-1r1spmr"> </span>`);
+    var root_1$7 = from_html(`<span class="cv-annotation-tab-preview svelte-1r1spmr"> </span>`);
+    var root_2$6 = from_html(`<span class="cv-annotation-tab-icon svelte-1r1spmr"> </span>`);
     var root_4 = from_html(`<button type="button"> </button>`);
     var root_3$2 = from_html(`<div class="cv-annotation-panel svelte-1r1spmr" role="none"><textarea class="cv-annotation-textarea svelte-1r1spmr" placeholder="Add a note…" rows="3"></textarea> <div class="cv-annotation-footer svelte-1r1spmr"><div class="cv-corner-selector svelte-1r1spmr" role="group" aria-label="Anchor corner"></div> <span class="cv-char-counter svelte-1r1spmr"> </span></div></div>`);
     var root$d = from_html(`<div class="cv-annotation-editor svelte-1r1spmr" role="none"><button type="button" aria-label="Annotation"><!></button> <!></div>`);
@@ -13296,7 +13296,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var span = root_1$6();
+    			var span = root_1$7();
     			var text = child(span, true);
 
     			reset(span);
@@ -13305,7 +13305,7 @@
     		};
 
     		var alternate = ($$anchor) => {
-    			var span_1 = root_2$5();
+    			var span_1 = root_2$6();
     			var text_1 = child(span_1, true);
 
     			reset(span_1);
@@ -13397,7 +13397,7 @@
 
     delegate(['click', 'input']);
 
-    var root_2$4 = from_html(`<!> <!>`, 1);
+    var root_2$5 = from_html(`<!> <!>`, 1);
     var root_3$1 = from_html(`<div><span class="selection-label svelte-1dbf58w"> </span></div>`);
     var root$c = from_html(`<div class="share-overlay-ui"><!> <!> <!> <!></div>`);
 
@@ -13662,7 +13662,7 @@
     			var node_4 = first_child(fragment);
 
     			each(node_4, 16, () => [...shareStore.selectedElements], (el) => el, ($$anchor, el) => {
-    				var fragment_1 = root_2$4();
+    				var fragment_1 = root_2$5();
     				var node_5 = first_child(fragment_1);
 
     				HighlightColorPicker(node_5, {
@@ -13731,7 +13731,7 @@
     	pop();
     }
 
-    var root_1$5 = from_html(`<div class="cv-focus-banner-wrapper svelte-1yqpn7e"><div id="cv-exit-focus-banner" data-cv-scroll-offset="" class="svelte-1yqpn7e"><span>You are viewing a 'focused view' generated by CustardUI.</span> <button type="button" class="svelte-1yqpn7e">See Original Page</button></div></div>`);
+    var root_1$6 = from_html(`<div class="cv-focus-banner-wrapper svelte-1yqpn7e"><div id="cv-exit-focus-banner" data-cv-scroll-offset="" class="svelte-1yqpn7e"><span>You are viewing a 'focused view' generated by CustardUI.</span> <button type="button" class="svelte-1yqpn7e">See Original Page</button></div></div>`);
 
     const $$css$b = {
     	hash: 'svelte-1yqpn7e',
@@ -13753,7 +13753,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var div = root_1$5();
+    			var div = root_1$6();
     			var div_1 = child(div);
     			var button = sibling(child(div_1), 2);
 
@@ -14730,8 +14730,8 @@
         return groups;
     }
 
-    var root_1$4 = from_html(`<span class="cv-annotation-text svelte-1asb212"> </span>`);
-    var root_2$3 = from_html(`<span class="cv-annotation-text svelte-1asb212"> </span>`);
+    var root_1$5 = from_html(`<span class="cv-annotation-text svelte-1asb212"> </span>`);
+    var root_2$4 = from_html(`<span class="cv-annotation-text svelte-1asb212"> </span>`);
     var root$9 = from_html(`<button type="button"><!></button>`);
 
     const $$css$8 = {
@@ -14779,7 +14779,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var span = root_1$4();
+    			var span = root_1$5();
     			var text = child(span, true);
 
     			reset(span);
@@ -14788,7 +14788,7 @@
     		};
 
     		var alternate = ($$anchor) => {
-    			var span_1 = root_2$3();
+    			var span_1 = root_2$4();
     			var text_1 = child(span_1, true);
 
     			reset(span_1);
@@ -14827,8 +14827,8 @@
 
     delegate(['click']);
 
-    var root_2$2 = from_html(`<button type="button" aria-label="Previous highlight">↑</button> <button type="button" aria-label="Next highlight">↓</button>`, 1);
-    var root_1$3 = from_html(`<div class="cv-highlight-group svelte-1mz0neo"><div class="cv-highlight-marker svelte-1mz0neo"></div> <!> <div class="cv-highlight-pill svelte-1mz0neo"><a href="https://custardui.js.org" target="_blank" rel="noopener noreferrer" class="svelte-1mz0neo">Annotated by: CustardUI↗</a></div> <!></div>`);
+    var root_2$3 = from_html(`<button type="button" aria-label="Previous highlight">↑</button> <button type="button" aria-label="Next highlight">↓</button>`, 1);
+    var root_1$4 = from_html(`<div class="cv-highlight-group svelte-1mz0neo"><div class="cv-highlight-marker svelte-1mz0neo"></div> <!> <div class="cv-highlight-pill svelte-1mz0neo"><a href="https://custardui.js.org" target="_blank" rel="noopener noreferrer" class="svelte-1mz0neo">Annotated by: CustardUI↗</a></div> <!></div>`);
     var root$8 = from_html(`<div class="cv-highlight-overlay svelte-1mz0neo"></div>`);
 
     const $$css$7 = {
@@ -14855,12 +14855,12 @@
     	var div = root$8();
 
     	each(div, 23, () => get(rects), (rect) => rect.element, ($$anchor, rect, i) => {
-    		var div_1 = root_1$3();
+    		var div_1 = root_1$4();
     		var node = sibling(child(div_1), 2);
 
     		{
     			var consequent = ($$anchor) => {
-    				var fragment = root_2$2();
+    				var fragment = root_2$3();
     				var button = first_child(fragment);
     				let classes;
 
@@ -16336,8 +16336,8 @@
         }
     }
 
-    var root_1$2 = from_html(`<div class="cv-toggle-label svelte-1ka2eec"> </div>`);
-    var root_2$1 = from_html(`<button type="button" class="cv-expand-btn svelte-1ka2eec"><!></button>`);
+    var root_1$3 = from_html(`<div class="cv-toggle-label svelte-1ka2eec"> </div>`);
+    var root_2$2 = from_html(`<button type="button" class="cv-expand-btn svelte-1ka2eec"><!></button>`);
     var root$5 = from_html(`<div><!> <div class="cv-toggle-content svelte-1ka2eec"><div class="cv-toggle-inner svelte-1ka2eec"><!></div></div> <!></div>`);
 
     const $$css$6 = {
@@ -16566,7 +16566,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var div_1 = root_1$2();
+    			var div_1 = root_1$3();
     			var text = child(div_1, true);
 
     			reset(div_1);
@@ -16594,7 +16594,7 @@
 
     	{
     		var consequent_2 = ($$anchor) => {
-    			var button = root_2$1();
+    			var button = root_2$2();
 
     			button.__click = toggleExpand;
 
@@ -16717,9 +16717,11 @@
     	true
     ));
 
-    var root$3 = from_svg(`<svg><g transform="rotate(45 8 8)"><path d="M10.5 2H12V0H4V2H5.5V6L4 7.5V9H7.2V15H8.8V9H12V7.5L10.5 6V2Z"></path></g></svg>`);
+    var root_1$2 = from_svg(`<path d="M4 2v13l4-2.5L12 15V2H4z"></path>`);
+    var root_2$1 = from_svg(`<path d="M4 2v13l4-2.5L12 15V2H4zm1 1h6v10.5l-3-1.88L5 13.5V3z"></path>`);
+    var root$3 = from_svg(`<svg><!></svg>`);
 
-    function IconPin($$anchor, $$props) {
+    function IconBookmark($$anchor, $$props) {
     	let isPinned = prop($$props, 'isPinned', 3, false),
     		rest = rest_props($$props, ['$$slots', '$$events', '$$legacy', 'isPinned']);
 
@@ -16738,17 +16740,38 @@
     		...rest
     	}));
 
+    	var node = child(svg);
+
+    	{
+    		var consequent = ($$anchor) => {
+    			var path = root_1$2();
+
+    			append($$anchor, path);
+    		};
+
+    		var alternate = ($$anchor) => {
+    			var path_1 = root_2$1();
+
+    			append($$anchor, path_1);
+    		};
+
+    		if_block(node, ($$render) => {
+    			if (isPinned()) $$render(consequent); else $$render(alternate, false);
+    		});
+    	}
+
+    	reset(svg);
     	append($$anchor, svg);
     }
 
-    var root_2 = from_html(`<li class="nav-item svelte-1ujqpe3"><a role="tab" title="Double-click a tab to 'pin' it in all similar tab groups."><span class="cv-tab-header-container svelte-1ujqpe3"><span class="cv-tab-header-text svelte-1ujqpe3"><!></span> <span class="cv-tab-pin-icon svelte-1ujqpe3"><!></span></span></a></li>`);
+    var root_2 = from_html(`<li class="nav-item svelte-1ujqpe3"><a role="tab" title="Double-click a tab to 'bookmark' it in all similar tab groups."><span class="cv-tab-header-container svelte-1ujqpe3"><span class="cv-tab-header-text svelte-1ujqpe3"><!></span> <span role="button" title="Click to bookmark this tab"><!></span></span></a></li>`);
     var root_1$1 = from_html(`<ul class="cv-tabs-nav nav-tabs svelte-1ujqpe3" role="tablist"></ul>`);
     var root_3 = from_html(`<link rel="stylesheet"/>`);
     var root$2 = from_html(`<div class="cv-tabgroup-container"><!> <!> <div class="cv-tabgroup-content"><!></div> <div class="cv-tabgroup-bottom-border svelte-1ujqpe3"></div></div>`);
 
     const $$css$4 = {
     	hash: 'svelte-1ujqpe3',
-    	code: ':host {display:block;margin-bottom:24px;}\n\n  /* Tab navigation styles */ul.nav-tabs.svelte-1ujqpe3 {display:flex;flex-wrap:wrap;padding-left:0;margin-top:0.5rem;margin-bottom:0;list-style:none;border-bottom:1px solid #dee2e6;align-items:stretch;}.nav-item.svelte-1ujqpe3 {margin-bottom:-1px;list-style:none;display:flex;align-items:stretch;}.nav-link.svelte-1ujqpe3 {display:flex;align-items:center;justify-content:center;padding:0.5rem 1rem;color:#495057;text-decoration:none;background-color:transparent;border:1px solid transparent;border-top-left-radius:0.25rem;border-top-right-radius:0.25rem;transition:color 0.15s ease-in-out,\n      background-color 0.15s ease-in-out,\n      border-color 0.15s ease-in-out;cursor:pointer;min-height:2.5rem;box-sizing:border-box;}.nav-link.svelte-1ujqpe3 p {margin:0;display:inline;}.nav-link.svelte-1ujqpe3:hover,\n  .nav-link.svelte-1ujqpe3:focus {border-color:#e9ecef #e9ecef #dee2e6;isolation:isolate;}.nav-link.active.svelte-1ujqpe3 {color:#495057;background-color:#fff;border-color:#dee2e6 #dee2e6 #fff;}.nav-link.svelte-1ujqpe3:focus {outline:0;}.cv-tab-header-container.svelte-1ujqpe3 {display:flex;align-items:center;gap:6px;}.cv-tab-header-text.svelte-1ujqpe3 {flex:1;}.cv-tab-pin-icon.svelte-1ujqpe3 {display:inline-flex;align-items:center;line-height:0;flex-shrink:0;}.cv-tab-pin-icon.svelte-1ujqpe3 svg {vertical-align:middle;width:14px;height:14px;}.cv-tabgroup-bottom-border.svelte-1ujqpe3 {border-bottom:1px solid #dee2e6;}\n\n  @media print {ul.cv-tabs-nav.svelte-1ujqpe3 {display:none !important;}\n  }'
+    	code: ':host {display:block;margin-bottom:24px;}\n\n  /* Tab navigation styles */ul.nav-tabs.svelte-1ujqpe3 {display:flex;flex-wrap:wrap;padding-left:0;margin-top:0.5rem;margin-bottom:0;list-style:none;border-bottom:1px solid var(--cv-border, rgba(128, 128, 128, 0.3));align-items:stretch;gap:0.5rem;}.nav-item.svelte-1ujqpe3 {margin-bottom:-1px;list-style:none;display:flex;align-items:stretch;}.nav-link.svelte-1ujqpe3 {display:flex;align-items:center;justify-content:center;padding:0.5rem 0.75rem;color:inherit;opacity:0.7;text-decoration:none;background-color:transparent;border:none;border-bottom:2px solid transparent;transition:opacity 0.15s ease-in-out,\n      border-color 0.15s ease-in-out;cursor:pointer;min-height:2.5rem;box-sizing:border-box;font-weight:500;}.nav-link.svelte-1ujqpe3 p {margin:0;display:inline;}.nav-link.svelte-1ujqpe3:hover,\n  .nav-link.svelte-1ujqpe3:focus {opacity:1;border-bottom-color:var(--cv-border, rgba(128, 128, 128, 0.3));isolation:isolate;}.nav-link.active.svelte-1ujqpe3 {opacity:1;border-bottom-color:currentColor;}.nav-link.svelte-1ujqpe3:focus {outline:0;}.cv-tab-header-container.svelte-1ujqpe3 {display:flex;align-items:center;gap:6px;}.cv-tab-header-text.svelte-1ujqpe3 {flex:1;}.cv-tab-pin-icon.svelte-1ujqpe3 {display:inline-flex;align-items:center;line-height:0;flex-shrink:0;opacity:0;transition:opacity 0.15s ease-out;}.nav-link.svelte-1ujqpe3:hover .cv-tab-pin-icon:where(.svelte-1ujqpe3),\n  .nav-link.svelte-1ujqpe3:focus .cv-tab-pin-icon:where(.svelte-1ujqpe3),\n  .cv-tab-pin-icon.is-pinned.svelte-1ujqpe3 {opacity:1;}.cv-tab-pin-icon.svelte-1ujqpe3 svg {vertical-align:middle;width:14px;height:14px;}.cv-tabgroup-bottom-border.svelte-1ujqpe3 {border-bottom:1px solid var(--cv-border, rgba(128, 128, 128, 0.3));}\n\n  @media print {ul.cv-tabs-nav.svelte-1ujqpe3 {display:none !important;}\n  }'
     };
 
     function TabGroup($$anchor, $$props) {
@@ -16918,7 +16941,7 @@
 
     	/**
     	 * Handles double-click events on the navigation tabs.
-    	 * Updates the store to "pin" the tab globally across all tab groups with the same ID.
+    	 * Updates the store to "bookmark" the tab globally across all tab groups with the same ID.
     	 */
     	function handleTabDoubleClick(tabId, event) {
     		event.preventDefault();
@@ -16926,6 +16949,18 @@
     		if (!groupId()) return;
 
     		// Update store directly - this will sync to all tab groups with same group-id
+    		activeStateStore.setPinnedTab(groupId(), tabId);
+    	}
+
+    	/**
+    	 * Handles click events specifically on the bookmark icon.
+    	 */
+    	function handlePinClick(tabId, event) {
+    		event.preventDefault();
+    		event.stopPropagation(); // Prevent the tab's click handler from firing
+
+    		if (!groupId()) return;
+
     		activeStateStore.setPinnedTab(groupId(), tabId);
     	}
 
@@ -16966,10 +17001,13 @@
     				reset(span_1);
 
     				var span_2 = sibling(span_1, 2);
-    				let styles;
+    				let classes_1;
+
+    				span_2.__click = (e) => handlePinClick(get(tab).id, e);
+
     				var node_2 = child(span_2);
 
-    				IconPin(node_2, {
+    				IconBookmark(node_2, {
     					get isPinned() {
     						return get(isPinned);
     					}
@@ -16987,7 +17025,7 @@
     					set_attribute(a, 'data-tab-id', get(tab).id);
     					set_attribute(a, 'data-raw-tab-id', get(tab).rawId);
     					set_attribute(a, 'data-group-id', groupId());
-    					styles = set_style(span_2, '', styles, { display: get(isPinned) ? 'inline-flex' : 'none' });
+    					classes_1 = set_class(span_2, 1, 'cv-tab-pin-icon svelte-1ujqpe3', null, classes_1, { 'is-pinned': get(isPinned) });
     				});
 
     				append($$anchor, li);
