@@ -4101,6 +4101,19 @@
     }
 
     /**
+     * Returns a promise that resolves once any pending state changes have been applied.
+     * @returns {Promise<void>}
+     */
+    async function tick() {
+
+    	await Promise.resolve();
+
+    	// By calling flushSync we guarantee that any pending state changes are applied after one tick.
+    	// TODO look into whether we can make flushing subsequent updates synchronously in the future.
+    	flushSync();
+    }
+
+    /**
      * @template V
      * @param {Value<V>} signal
      * @returns {V}
@@ -6197,6 +6210,29 @@
     	if (slot_fn === undefined) ; else {
     		slot_fn(anchor, is_interop ? () => slot_props : slot_props);
     	}
+    }
+
+    /** @import { TemplateNode, Dom } from '#client' */
+
+    /**
+     * @template P
+     * @template {(props: P) => void} C
+     * @param {TemplateNode} node
+     * @param {() => C} get_component
+     * @param {(anchor: TemplateNode, component: C) => Dom | void} render_fn
+     * @returns {void}
+     */
+    function component(node, get_component, render_fn) {
+    	if (hydrating) {
+    		hydrate_next();
+    	}
+
+    	var branches = new BranchManager(node);
+
+    	block(() => {
+    		var component = get_component() ?? null;
+    		branches.ensure(component, component && ((target) => render_fn(target, component)));
+    	}, EFFECT_TRANSPARENT);
     }
 
     /** @import { Raf } from '#client' */
@@ -9352,12 +9388,12 @@
 
     	// --- Actions ---
     	/**
-    	 * Set the pinned tab for a specific tab group.
+    	 * Set the marked tab for a specific tab group.
     	 * This syncs across all tab groups with the same ID.
     	 * @param groupId The ID of the tab group.
-    	 * @param tabId The ID of the tab to pin.
+    	 * @param tabId The ID of the tab to mark.
     	 */
-    	setPinnedTab(groupId, tabId) {
+    	setMarkedTab(groupId, tabId) {
     		if (!this.state.tabs) this.state.tabs = {};
 
     		this.state.tabs[groupId] = tabId;
@@ -9497,14 +9533,7 @@
     		const tabs = {};
     		const placeholders = {};
 
-    		// 1. Process global placeholders
-    		for (const p of this.config.placeholders ?? []) {
-    			if (p.defaultValue !== undefined) {
-    				placeholders[p.name] = p.defaultValue;
-    			}
-    		}
-
-    		// 2. Process toggles
+    		// 1. Process toggles
     		for (const toggle of this.config.toggles ?? []) {
     			if (toggle.default === 'peek') {
     				peekToggles.push(toggle.toggleId);
@@ -9513,7 +9542,7 @@
     			}
     		}
 
-    		// 3. Process tab groups
+    		// 2. Process tab groups
     		for (const group of this.config.tabGroups ?? []) {
     			let defaultTabId = group.default;
 
@@ -9537,6 +9566,15 @@
 
     			if (tabConfig && placeholders[group.placeholderId] === undefined) {
     				placeholders[group.placeholderId] = tabConfig.placeholderValue ?? '';
+    			}
+    		}
+
+    		// 3. Seed author-controlled (adaptationPlaceholder) defaults.
+    		// These are set by adaptations when active, and fall back to defaultValue when no adaptation is active.
+    		// This is intentionally separate from regular user-settable placeholder defaults (see PR #206).
+    		for (const def of placeholderRegistryStore.definitions) {
+    			if (def.adaptationPlaceholder && def.defaultValue !== undefined && def.defaultValue !== '') {
+    				placeholders[def.name] = def.defaultValue;
     			}
     		}
 
@@ -9989,15 +10027,15 @@
 
     const derivedStore = new DerivedStateStore();
 
-    var root$u = from_html(`<div><div role="alert"><button type="button" class="close-btn svelte-ysaqmb" aria-label="Dismiss intro">×</button> <p class="text svelte-ysaqmb"> </p></div></div>`);
+    var root$w = from_html(`<div><div role="alert"><button type="button" class="close-btn svelte-ysaqmb" aria-label="Dismiss intro">×</button> <p class="text svelte-ysaqmb"> </p></div></div>`);
 
-    const $$css$n = {
+    const $$css$o = {
     	hash: 'svelte-ysaqmb',
     	code: '\n  /* Animation */\n  @keyframes svelte-ysaqmb-popIn {\n    0% {\n      opacity: 0;\n      transform: scale(0.9) translateY(-50%);\n    }\n    100% {\n      opacity: 1;\n      transform: scale(1) translateY(-50%);\n    }\n  }\n\n  /* Reset transform for top/bottom positions */\n  @keyframes svelte-ysaqmb-popInVertical {\n    0% {\n      opacity: 0;\n      transform: scale(0.9);\n    }\n    100% {\n      opacity: 1;\n      transform: scale(1);\n    }\n  }\n\n  /* Simplified Pulse Animation - Shadow Only */\n  @keyframes svelte-ysaqmb-pulse {\n    0% {\n      transform: scale(1);\n      box-shadow:\n        0 4px 6px -1px rgba(0, 0, 0, 0.1),\n        0 0 0 0 rgba(62, 132, 244, 0.7);\n    }\n    50% {\n      transform: scale(1);\n      box-shadow:\n        0 4px 6px -1px rgba(0, 0, 0, 0.1),\n        0 0 0 10px rgba(62, 132, 244, 0);\n    }\n    100% {\n      transform: scale(1);\n      box-shadow:\n        0 4px 6px -1px rgba(0, 0, 0, 0.1),\n        0 0 0 0 rgba(62, 132, 244, 0);\n    }\n  }\n\n  /* Wrapper handles Positioning & Entry Animation */.cv-callout-wrapper.svelte-ysaqmb {position:fixed;z-index:9999;\n\n    /* Default animation (centered ones) */\n    animation: svelte-ysaqmb-popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;}\n\n  /* Inner handles Visuals & Pulse Animation */.cv-callout.svelte-ysaqmb {background:var(--cv-callout-bg, var(--cv-bg));padding:1rem 1.25rem;border-radius:0.5rem;box-shadow:0 4px 6px -1px var(--cv-shadow),\n      0 2px 4px -1px var(--cv-shadow); /* adapt shadow? */max-width:250px;font-size:0.9rem;line-height:1.5;color:var(--cv-callout-text, var(--cv-text));display:flex;align-items:flex-start;gap:0.75rem;font-family:inherit;border:2px solid var(--cv-border);}\n\n  /* Apply pulse to inner callout if enabled */.cv-callout.cv-pulse.svelte-ysaqmb {\n    animation: svelte-ysaqmb-pulse 2s infinite 0.5s;}\n\n  /* Arrow Base */.cv-callout.svelte-ysaqmb::before {content:\'\';position:absolute;width:1rem;height:1rem;background:var(--cv-callout-bg, var(--cv-bg));transform:rotate(45deg);border:2px solid var(--cv-border);z-index:-1;}.close-btn.svelte-ysaqmb {background:transparent;border:none;color:currentColor;opacity:0.7;font-size:1.25rem;line-height:1;cursor:pointer;padding:0;margin:-0.25rem -0.5rem 0 0;transition:opacity 0.15s;flex-shrink:0;}.close-btn.svelte-ysaqmb:hover {color:currentColor;opacity:1;}.text.svelte-ysaqmb {margin:0;flex:1;font-weight:500;}\n\n  /* \n     Position Specifics (Applied to Wrapper)\n  */\n\n  /* Right-side positions (Icon on Right -> Callout on Left) */.pos-top-right.svelte-ysaqmb,\n  .pos-middle-right.svelte-ysaqmb,\n  .pos-bottom-right.svelte-ysaqmb {right:80px;}.pos-top-right.svelte-ysaqmb,\n  .pos-bottom-right.svelte-ysaqmb {\n    animation-name: svelte-ysaqmb-popInVertical;}\n\n  /* X Button Spacing Adjustments */.pos-top-right.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb),\n  .pos-middle-right.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb),\n  .pos-bottom-right.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb) {margin-right:0;margin-left:-0.5rem;}\n\n  /* Left-side positions (Icon on Left -> Callout on Right) */.pos-top-left.svelte-ysaqmb,\n  .pos-middle-left.svelte-ysaqmb,\n  .pos-bottom-left.svelte-ysaqmb {left:80px;}.pos-top-left.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb),\n  .pos-middle-left.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb),\n  .pos-bottom-left.svelte-ysaqmb .close-btn:where(.svelte-ysaqmb) {order:2; /* Move to end */margin-right:-0.5rem;margin-left:0;}.pos-top-left.svelte-ysaqmb,\n  .pos-bottom-left.svelte-ysaqmb {\n    animation-name: svelte-ysaqmb-popInVertical;}\n\n  /* Vertical Alignment */.pos-middle-right.svelte-ysaqmb,\n  .pos-middle-left.svelte-ysaqmb {top:50%;\n    /* transform handled by popIn animation (translateY -50%) */}.pos-top-right.svelte-ysaqmb,\n  .pos-top-left.svelte-ysaqmb {top:20px;}.pos-bottom-right.svelte-ysaqmb,\n  .pos-bottom-left.svelte-ysaqmb {bottom:20px;}\n\n  /* Arrow Positioning (Child of .callout, dependent on Wrapper .pos-*) */\n\n  /* Pointing Right */.pos-top-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-middle-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-bottom-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before {right:-0.5rem;border-left:none;border-bottom:none;}\n\n  /* Pointing Left */.pos-top-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-middle-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-bottom-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before {left:-0.5rem;border-right:none;border-top:none;}\n\n  /* Vertical placement of arrow */.pos-middle-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-middle-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before {top:50%;margin-top:-0.5rem;}.pos-top-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-top-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before {top:1.25rem;}.pos-bottom-right.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before,\n  .pos-bottom-left.svelte-ysaqmb .cv-callout:where(.svelte-ysaqmb)::before {bottom:1.25rem;}\n\n  @media print {.cv-callout-wrapper.svelte-ysaqmb {display:none !important;}\n  }'
     };
 
     function IntroCallout($$anchor, $$props) {
-    	append_styles$1($$anchor, $$css$n);
+    	append_styles$1($$anchor, $$css$o);
 
     	let position = prop($$props, 'position', 3, 'middle-left'),
     		message = prop($$props, 'message', 3, 'Customize your reading experience here.'),
@@ -10014,7 +10052,7 @@
     	  "top" -> aligned top
     	  "bottom" -> aligned bottom
     	*/
-    	div = root$u();
+    	div = root$w();
 
     	var div_1 = child(div);
     	let styles;
@@ -10048,11 +10086,11 @@
 
     delegate(['click']);
 
-    var root$t = from_svg(`<svg><path xmlns="http://www.w3.org/2000/svg" fill-rule="evenodd" clip-rule="evenodd" d="M12 8.00002C9.79085 8.00002 7.99999 9.79088 7.99999 12C7.99999 14.2092 9.79085 16 12 16C14.2091 16 16 14.2092 16 12C16 9.79088 14.2091 8.00002 12 8.00002ZM9.99999 12C9.99999 10.8955 10.8954 10 12 10C13.1046 10 14 10.8955 14 12C14 13.1046 13.1046 14 12 14C10.8954 14 9.99999 13.1046 9.99999 12Z" fill="#0F1729"></path><path xmlns="http://www.w3.org/2000/svg" fill-rule="evenodd" clip-rule="evenodd" d="M10.7673 1.01709C10.9925 0.999829 11.2454 0.99993 11.4516 1.00001L12.5484 1.00001C12.7546 0.99993 13.0075 0.999829 13.2327 1.01709C13.4989 1.03749 13.8678 1.08936 14.2634 1.26937C14.7635 1.49689 15.1915 1.85736 15.5007 2.31147C15.7454 2.67075 15.8592 3.0255 15.9246 3.2843C15.9799 3.50334 16.0228 3.75249 16.0577 3.9557L16.1993 4.77635L16.2021 4.77788C16.2369 4.79712 16.2715 4.81659 16.306 4.8363L16.3086 4.83774L17.2455 4.49865C17.4356 4.42978 17.6693 4.34509 17.8835 4.28543C18.1371 4.2148 18.4954 4.13889 18.9216 4.17026C19.4614 4.20998 19.9803 4.39497 20.4235 4.70563C20.7734 4.95095 21.0029 5.23636 21.1546 5.4515C21.2829 5.63326 21.4103 5.84671 21.514 6.02029L22.0158 6.86003C22.1256 7.04345 22.2594 7.26713 22.3627 7.47527C22.4843 7.7203 22.6328 8.07474 22.6777 8.52067C22.7341 9.08222 22.6311 9.64831 22.3803 10.1539C22.1811 10.5554 21.9171 10.8347 21.7169 11.0212C21.5469 11.1795 21.3428 11.3417 21.1755 11.4746L20.5 12L21.1755 12.5254C21.3428 12.6584 21.5469 12.8205 21.7169 12.9789C21.9171 13.1653 22.1811 13.4446 22.3802 13.8461C22.631 14.3517 22.7341 14.9178 22.6776 15.4794C22.6328 15.9253 22.4842 16.2797 22.3626 16.5248C22.2593 16.7329 22.1255 16.9566 22.0158 17.14L21.5138 17.9799C21.4102 18.1535 21.2828 18.3668 21.1546 18.5485C21.0028 18.7637 20.7734 19.0491 20.4234 19.2944C19.9803 19.6051 19.4613 19.7901 18.9216 19.8298C18.4954 19.8612 18.1371 19.7852 17.8835 19.7146C17.6692 19.6549 17.4355 19.5703 17.2454 19.5014L16.3085 19.1623L16.306 19.1638C16.2715 19.1835 16.2369 19.2029 16.2021 19.2222L16.1993 19.2237L16.0577 20.0443C16.0228 20.2475 15.9799 20.4967 15.9246 20.7157C15.8592 20.9745 15.7454 21.3293 15.5007 21.6886C15.1915 22.1427 14.7635 22.5032 14.2634 22.7307C13.8678 22.9107 13.4989 22.9626 13.2327 22.983C13.0074 23.0002 12.7546 23.0001 12.5484 23H11.4516C11.2454 23.0001 10.9925 23.0002 10.7673 22.983C10.5011 22.9626 10.1322 22.9107 9.73655 22.7307C9.23648 22.5032 8.80849 22.1427 8.49926 21.6886C8.25461 21.3293 8.14077 20.9745 8.07542 20.7157C8.02011 20.4967 7.97723 20.2475 7.94225 20.0443L7.80068 19.2237L7.79791 19.2222C7.7631 19.2029 7.72845 19.1835 7.69396 19.1637L7.69142 19.1623L6.75458 19.5014C6.5645 19.5702 6.33078 19.6549 6.11651 19.7146C5.86288 19.7852 5.50463 19.8611 5.07841 19.8298C4.53866 19.7901 4.01971 19.6051 3.57654 19.2944C3.2266 19.0491 2.99714 18.7637 2.84539 18.5485C2.71718 18.3668 2.58974 18.1534 2.4861 17.9798L1.98418 17.14C1.87447 16.9566 1.74067 16.7329 1.63737 16.5248C1.51575 16.2797 1.36719 15.9253 1.32235 15.4794C1.26588 14.9178 1.36897 14.3517 1.61976 13.8461C1.81892 13.4446 2.08289 13.1653 2.28308 12.9789C2.45312 12.8205 2.65717 12.6584 2.82449 12.5254L3.47844 12.0054V11.9947L2.82445 11.4746C2.65712 11.3417 2.45308 11.1795 2.28304 11.0212C2.08285 10.8347 1.81888 10.5554 1.61972 10.1539C1.36893 9.64832 1.26584 9.08224 1.3223 8.52069C1.36714 8.07476 1.51571 7.72032 1.63732 7.47528C1.74062 7.26715 1.87443 7.04347 1.98414 6.86005L2.48605 6.02026C2.58969 5.84669 2.71714 5.63326 2.84534 5.45151C2.9971 5.23637 3.22655 4.95096 3.5765 4.70565C4.01966 4.39498 4.53862 4.20999 5.07837 4.17027C5.50458 4.1389 5.86284 4.21481 6.11646 4.28544C6.33072 4.34511 6.56444 4.4298 6.75451 4.49867L7.69141 4.83775L7.69394 4.8363C7.72844 4.8166 7.7631 4.79712 7.79791 4.77788L7.80068 4.77635L7.94225 3.95571C7.97723 3.7525 8.02011 3.50334 8.07542 3.2843C8.14077 3.0255 8.25461 2.67075 8.49926 2.31147C8.80849 1.85736 9.23648 1.49689 9.73655 1.26937C10.1322 1.08936 10.5011 1.03749 10.7673 1.01709ZM14.0938 4.3363C14.011 3.85634 13.9696 3.61637 13.8476 3.43717C13.7445 3.2858 13.6019 3.16564 13.4352 3.0898C13.2378 3.00002 12.9943 3.00002 12.5073 3.00002H11.4927C11.0057 3.00002 10.7621 3.00002 10.5648 3.0898C10.3981 3.16564 10.2555 3.2858 10.1524 3.43717C10.0304 3.61637 9.98895 3.85634 9.90615 4.3363L9.75012 5.24064C9.69445 5.56333 9.66662 5.72467 9.60765 5.84869C9.54975 5.97047 9.50241 6.03703 9.40636 6.13166C9.30853 6.22804 9.12753 6.3281 8.76554 6.52822C8.73884 6.54298 8.71227 6.55791 8.68582 6.57302C8.33956 6.77078 8.16643 6.86966 8.03785 6.90314C7.91158 6.93602 7.83293 6.94279 7.70289 6.93196C7.57049 6.92094 7.42216 6.86726 7.12551 6.7599L6.11194 6.39308C5.66271 6.2305 5.43809 6.14921 5.22515 6.16488C5.04524 6.17811 4.87225 6.23978 4.72453 6.34333C4.5497 6.46589 4.42715 6.67094 4.18206 7.08103L3.72269 7.84965C3.46394 8.2826 3.33456 8.49907 3.31227 8.72078C3.29345 8.90796 3.32781 9.09665 3.41141 9.26519C3.51042 9.4648 3.7078 9.62177 4.10256 9.9357L4.82745 10.5122C5.07927 10.7124 5.20518 10.8126 5.28411 10.9199C5.36944 11.036 5.40583 11.1114 5.44354 11.2504C5.47844 11.379 5.47844 11.586 5.47844 12C5.47844 12.414 5.47844 12.621 5.44354 12.7497C5.40582 12.8887 5.36944 12.9641 5.28413 13.0801C5.20518 13.1875 5.07927 13.2876 4.82743 13.4879L4.10261 14.0643C3.70785 14.3783 3.51047 14.5352 3.41145 14.7349C3.32785 14.9034 3.29349 15.0921 3.31231 15.2793C3.33461 15.501 3.46398 15.7174 3.72273 16.1504L4.1821 16.919C4.4272 17.3291 4.54974 17.5342 4.72457 17.6567C4.8723 17.7603 5.04528 17.8219 5.2252 17.8352C5.43813 17.8508 5.66275 17.7695 6.11199 17.607L7.12553 17.2402C7.42216 17.1328 7.5705 17.0791 7.7029 17.0681C7.83294 17.0573 7.91159 17.064 8.03786 17.0969C8.16644 17.1304 8.33956 17.2293 8.68582 17.427C8.71228 17.4421 8.73885 17.4571 8.76554 17.4718C9.12753 17.6719 9.30853 17.772 9.40635 17.8684C9.50241 17.963 9.54975 18.0296 9.60765 18.1514C9.66662 18.2754 9.69445 18.4367 9.75012 18.7594L9.90615 19.6637C9.98895 20.1437 10.0304 20.3837 10.1524 20.5629C10.2555 20.7142 10.3981 20.8344 10.5648 20.9102C10.7621 21 11.0057 21 11.4927 21H12.5073C12.9943 21 13.2378 21 13.4352 20.9102C13.6019 20.8344 13.7445 20.7142 13.8476 20.5629C13.9696 20.3837 14.011 20.1437 14.0938 19.6637L14.2499 18.7594C14.3055 18.4367 14.3334 18.2754 14.3923 18.1514C14.4502 18.0296 14.4976 17.963 14.5936 17.8684C14.6915 17.772 14.8725 17.6719 15.2344 17.4718C15.2611 17.4571 15.2877 17.4421 15.3141 17.427C15.6604 17.2293 15.8335 17.1304 15.9621 17.0969C16.0884 17.064 16.167 17.0573 16.2971 17.0681C16.4295 17.0791 16.5778 17.1328 16.8744 17.2402L17.888 17.607C18.3372 17.7696 18.5619 17.8509 18.7748 17.8352C18.9547 17.8219 19.1277 17.7603 19.2754 17.6567C19.4502 17.5342 19.5728 17.3291 19.8179 16.919L20.2773 16.1504C20.536 15.7175 20.6654 15.501 20.6877 15.2793C20.7065 15.0921 20.6721 14.9034 20.5885 14.7349C20.4895 14.5353 20.2921 14.3783 19.8974 14.0643L19.1726 13.4879C18.9207 13.2876 18.7948 13.1875 18.7159 13.0801C18.6306 12.9641 18.5942 12.8887 18.5564 12.7497C18.5215 12.6211 18.5215 12.414 18.5215 12C18.5215 11.586 18.5215 11.379 18.5564 11.2504C18.5942 11.1114 18.6306 11.036 18.7159 10.9199C18.7948 10.8126 18.9207 10.7124 19.1725 10.5122L19.8974 9.9357C20.2922 9.62176 20.4896 9.46479 20.5886 9.26517C20.6722 9.09664 20.7065 8.90795 20.6877 8.72076C20.6654 8.49906 20.5361 8.28259 20.2773 7.84964L19.8179 7.08102C19.5728 6.67093 19.4503 6.46588 19.2755 6.34332C19.1277 6.23977 18.9548 6.1781 18.7748 6.16486C18.5619 6.14919 18.3373 6.23048 17.888 6.39307L16.8745 6.75989C16.5778 6.86725 16.4295 6.92093 16.2971 6.93195C16.167 6.94278 16.0884 6.93601 15.9621 6.90313C15.8335 6.86965 15.6604 6.77077 15.3142 6.57302C15.2877 6.55791 15.2611 6.54298 15.2345 6.52822C14.8725 6.3281 14.6915 6.22804 14.5936 6.13166C14.4976 6.03703 14.4502 5.97047 14.3923 5.84869C14.3334 5.72467 14.3055 5.56332 14.2499 5.24064L14.0938 4.3363Z" fill="#0F1729"></path></svg>`);
+    var root$v = from_svg(`<svg><path xmlns="http://www.w3.org/2000/svg" fill-rule="evenodd" clip-rule="evenodd" d="M12 8.00002C9.79085 8.00002 7.99999 9.79088 7.99999 12C7.99999 14.2092 9.79085 16 12 16C14.2091 16 16 14.2092 16 12C16 9.79088 14.2091 8.00002 12 8.00002ZM9.99999 12C9.99999 10.8955 10.8954 10 12 10C13.1046 10 14 10.8955 14 12C14 13.1046 13.1046 14 12 14C10.8954 14 9.99999 13.1046 9.99999 12Z" fill="#0F1729"></path><path xmlns="http://www.w3.org/2000/svg" fill-rule="evenodd" clip-rule="evenodd" d="M10.7673 1.01709C10.9925 0.999829 11.2454 0.99993 11.4516 1.00001L12.5484 1.00001C12.7546 0.99993 13.0075 0.999829 13.2327 1.01709C13.4989 1.03749 13.8678 1.08936 14.2634 1.26937C14.7635 1.49689 15.1915 1.85736 15.5007 2.31147C15.7454 2.67075 15.8592 3.0255 15.9246 3.2843C15.9799 3.50334 16.0228 3.75249 16.0577 3.9557L16.1993 4.77635L16.2021 4.77788C16.2369 4.79712 16.2715 4.81659 16.306 4.8363L16.3086 4.83774L17.2455 4.49865C17.4356 4.42978 17.6693 4.34509 17.8835 4.28543C18.1371 4.2148 18.4954 4.13889 18.9216 4.17026C19.4614 4.20998 19.9803 4.39497 20.4235 4.70563C20.7734 4.95095 21.0029 5.23636 21.1546 5.4515C21.2829 5.63326 21.4103 5.84671 21.514 6.02029L22.0158 6.86003C22.1256 7.04345 22.2594 7.26713 22.3627 7.47527C22.4843 7.7203 22.6328 8.07474 22.6777 8.52067C22.7341 9.08222 22.6311 9.64831 22.3803 10.1539C22.1811 10.5554 21.9171 10.8347 21.7169 11.0212C21.5469 11.1795 21.3428 11.3417 21.1755 11.4746L20.5 12L21.1755 12.5254C21.3428 12.6584 21.5469 12.8205 21.7169 12.9789C21.9171 13.1653 22.1811 13.4446 22.3802 13.8461C22.631 14.3517 22.7341 14.9178 22.6776 15.4794C22.6328 15.9253 22.4842 16.2797 22.3626 16.5248C22.2593 16.7329 22.1255 16.9566 22.0158 17.14L21.5138 17.9799C21.4102 18.1535 21.2828 18.3668 21.1546 18.5485C21.0028 18.7637 20.7734 19.0491 20.4234 19.2944C19.9803 19.6051 19.4613 19.7901 18.9216 19.8298C18.4954 19.8612 18.1371 19.7852 17.8835 19.7146C17.6692 19.6549 17.4355 19.5703 17.2454 19.5014L16.3085 19.1623L16.306 19.1638C16.2715 19.1835 16.2369 19.2029 16.2021 19.2222L16.1993 19.2237L16.0577 20.0443C16.0228 20.2475 15.9799 20.4967 15.9246 20.7157C15.8592 20.9745 15.7454 21.3293 15.5007 21.6886C15.1915 22.1427 14.7635 22.5032 14.2634 22.7307C13.8678 22.9107 13.4989 22.9626 13.2327 22.983C13.0074 23.0002 12.7546 23.0001 12.5484 23H11.4516C11.2454 23.0001 10.9925 23.0002 10.7673 22.983C10.5011 22.9626 10.1322 22.9107 9.73655 22.7307C9.23648 22.5032 8.80849 22.1427 8.49926 21.6886C8.25461 21.3293 8.14077 20.9745 8.07542 20.7157C8.02011 20.4967 7.97723 20.2475 7.94225 20.0443L7.80068 19.2237L7.79791 19.2222C7.7631 19.2029 7.72845 19.1835 7.69396 19.1637L7.69142 19.1623L6.75458 19.5014C6.5645 19.5702 6.33078 19.6549 6.11651 19.7146C5.86288 19.7852 5.50463 19.8611 5.07841 19.8298C4.53866 19.7901 4.01971 19.6051 3.57654 19.2944C3.2266 19.0491 2.99714 18.7637 2.84539 18.5485C2.71718 18.3668 2.58974 18.1534 2.4861 17.9798L1.98418 17.14C1.87447 16.9566 1.74067 16.7329 1.63737 16.5248C1.51575 16.2797 1.36719 15.9253 1.32235 15.4794C1.26588 14.9178 1.36897 14.3517 1.61976 13.8461C1.81892 13.4446 2.08289 13.1653 2.28308 12.9789C2.45312 12.8205 2.65717 12.6584 2.82449 12.5254L3.47844 12.0054V11.9947L2.82445 11.4746C2.65712 11.3417 2.45308 11.1795 2.28304 11.0212C2.08285 10.8347 1.81888 10.5554 1.61972 10.1539C1.36893 9.64832 1.26584 9.08224 1.3223 8.52069C1.36714 8.07476 1.51571 7.72032 1.63732 7.47528C1.74062 7.26715 1.87443 7.04347 1.98414 6.86005L2.48605 6.02026C2.58969 5.84669 2.71714 5.63326 2.84534 5.45151C2.9971 5.23637 3.22655 4.95096 3.5765 4.70565C4.01966 4.39498 4.53862 4.20999 5.07837 4.17027C5.50458 4.1389 5.86284 4.21481 6.11646 4.28544C6.33072 4.34511 6.56444 4.4298 6.75451 4.49867L7.69141 4.83775L7.69394 4.8363C7.72844 4.8166 7.7631 4.79712 7.79791 4.77788L7.80068 4.77635L7.94225 3.95571C7.97723 3.7525 8.02011 3.50334 8.07542 3.2843C8.14077 3.0255 8.25461 2.67075 8.49926 2.31147C8.80849 1.85736 9.23648 1.49689 9.73655 1.26937C10.1322 1.08936 10.5011 1.03749 10.7673 1.01709ZM14.0938 4.3363C14.011 3.85634 13.9696 3.61637 13.8476 3.43717C13.7445 3.2858 13.6019 3.16564 13.4352 3.0898C13.2378 3.00002 12.9943 3.00002 12.5073 3.00002H11.4927C11.0057 3.00002 10.7621 3.00002 10.5648 3.0898C10.3981 3.16564 10.2555 3.2858 10.1524 3.43717C10.0304 3.61637 9.98895 3.85634 9.90615 4.3363L9.75012 5.24064C9.69445 5.56333 9.66662 5.72467 9.60765 5.84869C9.54975 5.97047 9.50241 6.03703 9.40636 6.13166C9.30853 6.22804 9.12753 6.3281 8.76554 6.52822C8.73884 6.54298 8.71227 6.55791 8.68582 6.57302C8.33956 6.77078 8.16643 6.86966 8.03785 6.90314C7.91158 6.93602 7.83293 6.94279 7.70289 6.93196C7.57049 6.92094 7.42216 6.86726 7.12551 6.7599L6.11194 6.39308C5.66271 6.2305 5.43809 6.14921 5.22515 6.16488C5.04524 6.17811 4.87225 6.23978 4.72453 6.34333C4.5497 6.46589 4.42715 6.67094 4.18206 7.08103L3.72269 7.84965C3.46394 8.2826 3.33456 8.49907 3.31227 8.72078C3.29345 8.90796 3.32781 9.09665 3.41141 9.26519C3.51042 9.4648 3.7078 9.62177 4.10256 9.9357L4.82745 10.5122C5.07927 10.7124 5.20518 10.8126 5.28411 10.9199C5.36944 11.036 5.40583 11.1114 5.44354 11.2504C5.47844 11.379 5.47844 11.586 5.47844 12C5.47844 12.414 5.47844 12.621 5.44354 12.7497C5.40582 12.8887 5.36944 12.9641 5.28413 13.0801C5.20518 13.1875 5.07927 13.2876 4.82743 13.4879L4.10261 14.0643C3.70785 14.3783 3.51047 14.5352 3.41145 14.7349C3.32785 14.9034 3.29349 15.0921 3.31231 15.2793C3.33461 15.501 3.46398 15.7174 3.72273 16.1504L4.1821 16.919C4.4272 17.3291 4.54974 17.5342 4.72457 17.6567C4.8723 17.7603 5.04528 17.8219 5.2252 17.8352C5.43813 17.8508 5.66275 17.7695 6.11199 17.607L7.12553 17.2402C7.42216 17.1328 7.5705 17.0791 7.7029 17.0681C7.83294 17.0573 7.91159 17.064 8.03786 17.0969C8.16644 17.1304 8.33956 17.2293 8.68582 17.427C8.71228 17.4421 8.73885 17.4571 8.76554 17.4718C9.12753 17.6719 9.30853 17.772 9.40635 17.8684C9.50241 17.963 9.54975 18.0296 9.60765 18.1514C9.66662 18.2754 9.69445 18.4367 9.75012 18.7594L9.90615 19.6637C9.98895 20.1437 10.0304 20.3837 10.1524 20.5629C10.2555 20.7142 10.3981 20.8344 10.5648 20.9102C10.7621 21 11.0057 21 11.4927 21H12.5073C12.9943 21 13.2378 21 13.4352 20.9102C13.6019 20.8344 13.7445 20.7142 13.8476 20.5629C13.9696 20.3837 14.011 20.1437 14.0938 19.6637L14.2499 18.7594C14.3055 18.4367 14.3334 18.2754 14.3923 18.1514C14.4502 18.0296 14.4976 17.963 14.5936 17.8684C14.6915 17.772 14.8725 17.6719 15.2344 17.4718C15.2611 17.4571 15.2877 17.4421 15.3141 17.427C15.6604 17.2293 15.8335 17.1304 15.9621 17.0969C16.0884 17.064 16.167 17.0573 16.2971 17.0681C16.4295 17.0791 16.5778 17.1328 16.8744 17.2402L17.888 17.607C18.3372 17.7696 18.5619 17.8509 18.7748 17.8352C18.9547 17.8219 19.1277 17.7603 19.2754 17.6567C19.4502 17.5342 19.5728 17.3291 19.8179 16.919L20.2773 16.1504C20.536 15.7175 20.6654 15.501 20.6877 15.2793C20.7065 15.0921 20.6721 14.9034 20.5885 14.7349C20.4895 14.5353 20.2921 14.3783 19.8974 14.0643L19.1726 13.4879C18.9207 13.2876 18.7948 13.1875 18.7159 13.0801C18.6306 12.9641 18.5942 12.8887 18.5564 12.7497C18.5215 12.6211 18.5215 12.414 18.5215 12C18.5215 11.586 18.5215 11.379 18.5564 11.2504C18.5942 11.1114 18.6306 11.036 18.7159 10.9199C18.7948 10.8126 18.9207 10.7124 19.1725 10.5122L19.8974 9.9357C20.2922 9.62176 20.4896 9.46479 20.5886 9.26517C20.6722 9.09664 20.7065 8.90795 20.6877 8.72076C20.6654 8.49906 20.5361 8.28259 20.2773 7.84964L19.8179 7.08102C19.5728 6.67093 19.4503 6.46588 19.2755 6.34332C19.1277 6.23977 18.9548 6.1781 18.7748 6.16486C18.5619 6.14919 18.3373 6.23048 17.888 6.39307L16.8745 6.75989C16.5778 6.86725 16.4295 6.92093 16.2971 6.93195C16.167 6.94278 16.0884 6.93601 15.9621 6.90313C15.8335 6.86965 15.6604 6.77077 15.3142 6.57302C15.2877 6.55791 15.2611 6.54298 15.2345 6.52822C14.8725 6.3281 14.6915 6.22804 14.5936 6.13166C14.4976 6.03703 14.4502 5.97047 14.3923 5.84869C14.3334 5.72467 14.3055 5.56332 14.2499 5.24064L14.0938 4.3363Z" fill="#0F1729"></path></svg>`);
 
     function IconGear($$anchor, $$props) {
     	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
-    	var svg = root$t();
+    	var svg = root$v();
 
     	attribute_effect(svg, () => ({
     		class: 'cv-modal-icon-svg',
@@ -10065,17 +10103,17 @@
     	append($$anchor, svg);
     }
 
-    var root_1$e = from_html(`<button type="button" class="cv-dismiss-btn svelte-122ln5" aria-label="Dismiss settings icon">✕</button>`);
-    var root$s = from_html(`<div role="none"><button type="button" class="cv-settings-main-btn svelte-122ln5"><span class="cv-gear svelte-122ln5"><!></span></button> <button type="button" class="cv-collapse-btn svelte-122ln5" aria-label="Collapse settings icon"> </button> <!></div>`);
+    var root_1$f = from_html(`<button type="button" class="cv-dismiss-btn svelte-122ln5" aria-label="Dismiss settings icon">✕</button>`);
+    var root$u = from_html(`<div role="none"><button type="button" class="cv-settings-main-btn svelte-122ln5"><span class="cv-gear svelte-122ln5"><!></span></button> <button type="button" class="cv-collapse-btn svelte-122ln5" aria-label="Collapse settings icon"> </button> <!></div>`);
 
-    const $$css$m = {
+    const $$css$n = {
     	hash: 'svelte-122ln5',
     	code: '.cv-settings-main-btn.svelte-122ln5 {appearance:none;-webkit-appearance:none;background:transparent;border:none;padding:0;margin:0;flex:1;height:100%;width:100%;display:flex;align-items:inherit;justify-content:inherit;color:inherit;cursor:inherit;border-radius:inherit;}.cv-settings-main-btn.svelte-122ln5:focus-visible {outline:2px solid currentColor;outline-offset:-2px;}.cv-gear.svelte-122ln5 {display:flex;align-items:center;justify-content:center;width:18px;height:18px;}.cv-gear.svelte-122ln5 svg {width:18px;height:18px;}.cv-gear.svelte-122ln5 svg path {fill:currentColor;}.cv-settings-icon.svelte-122ln5 {position:fixed;background:var(--cv-icon-bg, rgba(255, 255, 255, 0.92));color:var(--cv-icon-color, rgba(0, 0, 0, 0.9));opacity:var(--cv-icon-opacity, 0.6);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;cursor:grab; /* Default cursor */box-shadow:0 4px 12px rgba(0, 0, 0, 0.15);border:2px solid rgba(0, 0, 0, 0.2);z-index:9998;transition:width 0.3s ease,\n      background 0.3s ease,\n      color 0.3s ease,\n      opacity 0.3s ease,\n      border-color 0.3s ease,\n      transform 0.4s ease; /* transform transition drives the peek slide animation */touch-action:none; /* Crucial for touch dragging */font-family:-apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif;box-sizing:border-box;user-select:none; /* Prevent text selection while dragging */}.cv-settings-icon.svelte-122ln5:active {cursor:grabbing;}.cv-settings-icon.svelte-122ln5:hover {background:var(--cv-icon-bg, rgba(255, 255, 255, 1));color:var(--cv-icon-color, rgba(0, 0, 0, 1));opacity:1;border-color:rgba(0, 0, 0, 0.3);}\n\n  /* Remove transform transition during drag so it tracks the pointer without lag */.cv-settings-icon.cv-is-dragging.svelte-122ln5 {transition:width 0.3s ease,\n      background 0.3s ease,\n      color 0.3s ease,\n      opacity 0.3s ease,\n      border-color 0.3s ease;}\n\n  /* When collapsed, dim the strip */.cv-settings-icon.cv-is-collapsed.svelte-122ln5 {opacity:0.5;}.cv-settings-icon.cv-is-collapsed.svelte-122ln5:hover {opacity:0.85;}.cv-collapse-btn.svelte-122ln5 {position:absolute;top:0;bottom:0;width:16px;display:flex;align-items:center;justify-content:center;background:rgba(0, 0, 0, 0.12);border:none;padding:0;cursor:pointer;font-size:13px;line-height:1;color:inherit;opacity:0.5;transition:opacity 0.15s ease, background 0.15s ease;}.cv-collapse-btn[data-side=\'left\'].svelte-122ln5 {left:0; /* outer = screen-edge side for left icons */border-radius:0 6px 6px 0;}.cv-collapse-btn[data-side=\'right\'].svelte-122ln5 {right:0; /* outer = screen-edge side for right icons */border-radius:6px 0 0 6px;}.cv-collapse-btn.svelte-122ln5:hover {opacity:1;background:rgba(0, 0, 0, 0.22);}\n\n  /* Hide collapse tab when already collapsed */.cv-settings-icon.cv-is-collapsed.svelte-122ln5 .cv-collapse-btn:where(.svelte-122ln5) {display:none;}.cv-dismiss-btn.svelte-122ln5 {position:absolute;bottom:calc(100% + 4px);width:16px;height:16px;display:flex;align-items:center;justify-content:center;background:rgba(0, 0, 0, 0.15);border:none;border-radius:50%;padding:0;cursor:pointer;font-size:9px;line-height:1;color:inherit;opacity:0.5;transition:opacity 0.15s ease, background 0.15s ease;}.cv-dismiss-btn[data-side=\'left\'].svelte-122ln5 {left:0;}.cv-dismiss-btn[data-side=\'right\'].svelte-122ln5 {right:0;}.cv-dismiss-btn.svelte-122ln5:hover {opacity:1;background:rgba(0, 0, 0, 0.25);}\n\n\n  /* Top-right */.cv-settings-top-right.svelte-122ln5 {top:20px;right:0;border-radius:18px 0 0 18px;padding-left:6px;justify-content:flex-start;border-right:none;}\n\n  /* Top-left */.cv-settings-top-left.svelte-122ln5 {top:20px;left:0;border-radius:0 18px 18px 0;padding-right:6px;justify-content:flex-end;border-left:none;}\n\n  /* Bottom-right */.cv-settings-bottom-right.svelte-122ln5 {bottom:20px;right:0;border-radius:18px 0 0 18px;padding-left:6px;justify-content:flex-start;border-right:none;}\n\n  /* Bottom-left */.cv-settings-bottom-left.svelte-122ln5 {bottom:20px;left:0;border-radius:0 18px 18px 0;padding-right:6px;justify-content:flex-end;border-left:none;}\n\n  /* Middle-left */.cv-settings-middle-left.svelte-122ln5 {top:50%;left:0;\n    /* transform handled by inline style now */border-radius:0 18px 18px 0;padding-right:6px;justify-content:flex-end;border-left:none;}\n\n  /* Middle-right */.cv-settings-middle-right.svelte-122ln5 {top:50%;right:0;\n    /* transform handled by inline style now */border-radius:18px 0 0 18px;padding-left:6px;justify-content:flex-start;border-right:none;}.cv-settings-top-right.svelte-122ln5,\n  .cv-settings-middle-right.svelte-122ln5,\n  .cv-settings-bottom-right.svelte-122ln5,\n  .cv-settings-top-left.svelte-122ln5,\n  .cv-settings-middle-left.svelte-122ln5,\n  .cv-settings-bottom-left.svelte-122ln5 {height:36px;width:36px;}.cv-settings-middle-right.svelte-122ln5:hover,\n  .cv-settings-top-right.svelte-122ln5:hover,\n  .cv-settings-bottom-right.svelte-122ln5:hover,\n  .cv-settings-top-left.svelte-122ln5:hover,\n  .cv-settings-middle-left.svelte-122ln5:hover,\n  .cv-settings-bottom-left.svelte-122ln5:hover {width:55px;}.cv-pulse {\n    animation: svelte-122ln5-pulse 2s infinite;}\n\n  @keyframes svelte-122ln5-pulse {\n    0% {\n      box-shadow:\n        0 4px 12px rgba(0, 0, 0, 0.15),\n        0 0 0 0 rgba(62, 132, 244, 0.7);\n    }\n    70% {\n      box-shadow:\n        0 4px 12px rgba(0, 0, 0, 0.15),\n        0 0 0 10px rgba(62, 132, 244, 0);\n    }\n    100% {\n      box-shadow:\n        0 4px 12px rgba(0, 0, 0, 0.15),\n        0 0 0 0 rgba(62, 132, 244, 0);\n    }\n  }\n\n  @media (max-width: 768px) {.cv-settings-top-right.svelte-122ln5,\n    .cv-settings-top-left.svelte-122ln5 {top:10px;}.cv-settings-bottom-right.svelte-122ln5,\n    .cv-settings-bottom-left.svelte-122ln5 {bottom:10px;}.cv-settings-top-right.svelte-122ln5,\n    .cv-settings-bottom-right.svelte-122ln5,\n    .cv-settings-middle-right.svelte-122ln5 {right:0;}.cv-settings-top-left.svelte-122ln5,\n    .cv-settings-bottom-left.svelte-122ln5,\n    .cv-settings-middle-left.svelte-122ln5 {left:0;}.cv-settings-icon.svelte-122ln5 {width:60px;height:32px;}.cv-settings-icon.svelte-122ln5:hover {width:75px;}\n  }\n\n  @media print {.cv-settings-icon.svelte-122ln5 {display:none !important;}\n  }'
     };
 
     function SettingsIcon($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$m);
+    	append_styles$1($$anchor, $$css$n);
 
     	/* eslint-disable @typescript-eslint/no-explicit-any */
     	const iconSettingsStore = getContext(ICON_SETTINGS_CTX);
@@ -10287,7 +10325,7 @@
     		return t;
     	}
 
-    	var div = root$s();
+    	var div = root$u();
     	let classes;
 
     	div.__mousedown = onMouseDown;
@@ -10320,7 +10358,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var button_2 = root_1$e();
+    			var button_2 = root_1$f();
 
     			button_2.__click = (e) => {
     				e.stopPropagation();
@@ -10508,11 +10546,11 @@
     	};
     }
 
-    var root$r = from_svg(`<svg><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>`);
+    var root$t = from_svg(`<svg><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>`);
 
     function IconClose($$anchor, $$props) {
     	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
-    	var svg = root$r();
+    	var svg = root$t();
 
     	attribute_effect(svg, () => ({
     		class: 'cv-modal-close-icon',
@@ -10527,11 +10565,11 @@
     	append($$anchor, svg);
     }
 
-    var root$q = from_svg(`<svg><rect y="34.5001" width="250" height="146" rx="4" stroke="currentColor" stroke-width="10" fill="none"></rect><line x1="27" y1="62.0001" x2="77" y2="62.0001" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="77.8888" x2="77" y2="77.8888" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="97.4454" x2="221" y2="97.4454" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="114.555" x2="221" y2="114.555" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="132.889" x2="221" y2="132.889" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="150" x2="221" y2="150" stroke="currentColor" stroke-width="5"></line><path d="M245 37.0001V39.5001H250V37.0001H247.5H245ZM250 13.0001C250 11.6194 248.881 10.5001C247.5 10.5001C246.119 10.5001 245 11.6194 245 13.0001H247.5H250ZM250 31.0001C250 29.6194 248.881 28.5001C247.5 28.5001C246.119 28.5001 245 29.6194 245 31.0001H247.5H250ZM245 19.0001C245 20.3808 246.119 21.5001C247.5 21.5001C248.881 21.5001 250 20.3808 250 19.0001H247.5H245ZM247.5 37.0001H250V31.0001H247.5H245V37.0001H247.5ZM247.5 19.0001H250V13.0001H247.5H245V19.0001H247.5Z" fill="currentColor"></path><line x1="204.09" y1="36.6095" x2="181.698" y2="10.0228" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></line><path d="M125 9.50012L181 9.50012" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M144.305 35.2579L120.095 6.56679" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M120 6.50037L64 6.50037" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M87.1957 36.1024L59 2.50008" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M59 2.50037L3 2.50037" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M2.5 38.5001L2.5 3.00012" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M185 12.5001L247 12.5001" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path></svg>`);
+    var root$s = from_svg(`<svg><rect y="34.5001" width="250" height="146" rx="4" stroke="currentColor" stroke-width="10" fill="none"></rect><line x1="27" y1="62.0001" x2="77" y2="62.0001" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="77.8888" x2="77" y2="77.8888" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="97.4454" x2="221" y2="97.4454" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="114.555" x2="221" y2="114.555" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="132.889" x2="221" y2="132.889" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="150" x2="221" y2="150" stroke="currentColor" stroke-width="5"></line><path d="M245 37.0001V39.5001H250V37.0001H247.5H245ZM250 13.0001C250 11.6194 248.881 10.5001C247.5 10.5001C246.119 10.5001 245 11.6194 245 13.0001H247.5H250ZM250 31.0001C250 29.6194 248.881 28.5001C247.5 28.5001C246.119 28.5001 245 29.6194 245 31.0001H247.5H250ZM245 19.0001C245 20.3808 246.119 21.5001C247.5 21.5001C248.881 21.5001 250 20.3808 250 19.0001H247.5H245ZM247.5 37.0001H250V31.0001H247.5H245V37.0001H247.5ZM247.5 19.0001H250V13.0001H247.5H245V19.0001H247.5Z" fill="currentColor"></path><line x1="204.09" y1="36.6095" x2="181.698" y2="10.0228" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></line><path d="M125 9.50012L181 9.50012" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M144.305 35.2579L120.095 6.56679" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M120 6.50037L64 6.50037" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M87.1957 36.1024L59 2.50008" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M59 2.50037L3 2.50037" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M2.5 38.5001L2.5 3.00012" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path><path d="M185 12.5001L247 12.5001" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 10"></path></svg>`);
 
     function IconNavDashed($$anchor, $$props) {
     	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
-    	var svg = root$q();
+    	var svg = root$s();
 
     	attribute_effect(svg, () => ({
     		xmlns: 'http://www.w3.org/2000/svg',
@@ -10544,11 +10582,11 @@
     	append($$anchor, svg);
     }
 
-    var root$p = from_svg(`<svg><rect y="34.5001" width="250" height="146" rx="4" stroke="currentColor" stroke-width="10" fill="none"></rect><line x1="27" y1="62.0001" x2="77" y2="62.0001" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="77.8888" x2="77" y2="77.8888" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="97.4454" x2="221" y2="97.4454" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="114.555" x2="221" y2="114.555" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="132.889" x2="221" y2="132.889" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="150" x2="221" y2="150" stroke="currentColor" stroke-width="5"></line><line x1="247.5" y1="43.0001" x2="247.5" y2="13.0001" stroke="currentColor" stroke-width="5" stroke-linecap="round"></line><path d="M185 12.5001L247 12.5001" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><line x1="204.09" y1="36.6095" x2="181.698" y2="10.0228" stroke="currentColor" stroke-width="5" stroke-linecap="round"></line><path d="M125 9.50012L181 9.50012" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><path d="M144.305 35.2579L120.095 6.56679" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><path d="M120 6.50037L64 6.50037" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><path d="M87.1957 36.1024L59 2.50008" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><path d="M59 2.50037L3 2.50037" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><path d="M2.5 38.5001L2.5 3.00012" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path></svg>`);
+    var root$r = from_svg(`<svg><rect y="34.5001" width="250" height="146" rx="4" stroke="currentColor" stroke-width="10" fill="none"></rect><line x1="27" y1="62.0001" x2="77" y2="62.0001" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="77.8888" x2="77" y2="77.8888" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="97.4454" x2="221" y2="97.4454" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="114.555" x2="221" y2="114.555" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="132.889" x2="221" y2="132.889" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="150" x2="221" y2="150" stroke="currentColor" stroke-width="5"></line><line x1="247.5" y1="43.0001" x2="247.5" y2="13.0001" stroke="currentColor" stroke-width="5" stroke-linecap="round"></line><path d="M185 12.5001L247 12.5001" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><line x1="204.09" y1="36.6095" x2="181.698" y2="10.0228" stroke="currentColor" stroke-width="5" stroke-linecap="round"></line><path d="M125 9.50012L181 9.50012" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><path d="M144.305 35.2579L120.095 6.56679" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><path d="M120 6.50037L64 6.50037" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><path d="M87.1957 36.1024L59 2.50008" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><path d="M59 2.50037L3 2.50037" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path><path d="M2.5 38.5001L2.5 3.00012" stroke="currentColor" stroke-width="5" stroke-linecap="round"></path></svg>`);
 
     function IconNavHeadingOn($$anchor, $$props) {
     	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
-    	var svg = root$p();
+    	var svg = root$r();
 
     	attribute_effect(svg, () => ({
     		xmlns: 'http://www.w3.org/2000/svg',
@@ -10561,11 +10599,11 @@
     	append($$anchor, svg);
     }
 
-    var root$o = from_svg(`<svg><rect y="34.5001" width="250" height="146" rx="4" stroke="currentColor" stroke-width="10" fill="none"></rect><line x1="27" y1="62" x2="77" y2="62" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="77.8887" x2="77" y2="77.8887" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="97.4453" x2="221" y2="97.4453" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="114.555" x2="221" y2="114.555" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="132.889" x2="221" y2="132.889" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="150" x2="221" y2="150" stroke="currentColor" stroke-width="5"></line></svg>`);
+    var root$q = from_svg(`<svg><rect y="34.5001" width="250" height="146" rx="4" stroke="currentColor" stroke-width="10" fill="none"></rect><line x1="27" y1="62" x2="77" y2="62" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="77.8887" x2="77" y2="77.8887" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="97.4453" x2="221" y2="97.4453" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="114.555" x2="221" y2="114.555" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="132.889" x2="221" y2="132.889" stroke="currentColor" stroke-width="5"></line><line x1="27" y1="150" x2="221" y2="150" stroke="currentColor" stroke-width="5"></line></svg>`);
 
     function IconNavHeadingOff($$anchor, $$props) {
     	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
-    	var svg = root$o();
+    	var svg = root$q();
 
     	attribute_effect(svg, () => ({
     		xmlns: 'http://www.w3.org/2000/svg',
@@ -10579,11 +10617,11 @@
     	append($$anchor, svg);
     }
 
-    var root$n = from_svg(`<svg><path fill="currentColor" d="M18 8h-2a1 1 0 0 0 0 2h2v8H6v-8h2a1 1 0 0 0 0-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2z"></path><path fill="currentColor" d="M11 6.41V12a1 1 0 0 0 2 0V6.41l1.29 1.3a1 1 0 0 0 1.42 0a1 1 0 0 0 0-1.42l-3-3a1 1 0 0 0-1.42 0l-3 3a1 1 0 1 0 1.42 1.42L11 6.41z"></path></svg>`);
+    var root$p = from_svg(`<svg><path fill="currentColor" d="M18 8h-2a1 1 0 0 0 0 2h2v8H6v-8h2a1 1 0 0 0 0-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2z"></path><path fill="currentColor" d="M11 6.41V12a1 1 0 0 0 2 0V6.41l1.29 1.3a1 1 0 0 0 1.42 0a1 1 0 0 0 0-1.42l-3-3a1 1 0 0 0-1.42 0l-3 3a1 1 0 1 0 1.42 1.42L11 6.41z"></path></svg>`);
 
     function IconShare($$anchor, $$props) {
     	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
-    	var svg = root$n();
+    	var svg = root$p();
 
     	attribute_effect(svg, () => ({
     		xmlns: 'http://www.w3.org/2000/svg',
@@ -10596,11 +10634,11 @@
     	append($$anchor, svg);
     }
 
-    var root$m = from_svg(`<svg><g id="surface1"><path d="M 11.273438 0 L 2.546875 0 C 1.746094 0 1.089844 0.613281 1.089844 1.363281 L 1.089844 10.910156 L 2.546875 10.910156 L 2.546875 1.363281 L 11.273438 1.363281 Z M 13.453125 2.726562 L 5.453125 2.726562 C 4.65625 2.726562 4 3.339844 4 4.089844 L 4 13.636719 C 4 14.386719 4.65625 15 5.453125 15 L 13.453125 15 C 14.253906 15 14.910156 14.386719 14.910156 13.636719 L 14.910156 4.089844 C 14.910156 3.339844 14.253906 2.726562 13.453125 2.726562 Z M 13.453125 13.636719 L 5.453125 13.636719 L 5.453125 4.089844 L 13.453125 4.089844 Z M 13.453125 13.636719 "></path></g></svg>`);
+    var root$o = from_svg(`<svg><g id="surface1"><path d="M 11.273438 0 L 2.546875 0 C 1.746094 0 1.089844 0.613281 1.089844 1.363281 L 1.089844 10.910156 L 2.546875 10.910156 L 2.546875 1.363281 L 11.273438 1.363281 Z M 13.453125 2.726562 L 5.453125 2.726562 C 4.65625 2.726562 4 3.339844 4 4.089844 L 4 13.636719 C 4 14.386719 4.65625 15 5.453125 15 L 13.453125 15 C 14.253906 15 14.910156 14.386719 14.910156 13.636719 L 14.910156 4.089844 C 14.910156 3.339844 14.253906 2.726562 13.453125 2.726562 Z M 13.453125 13.636719 L 5.453125 13.636719 L 5.453125 4.089844 L 13.453125 4.089844 Z M 13.453125 13.636719 "></path></g></svg>`);
 
     function IconCopy($$anchor, $$props) {
     	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
-    	var svg = root$m();
+    	var svg = root$o();
 
     	attribute_effect(svg, () => ({
     		xmlns: 'http://www.w3.org/2000/svg',
@@ -10616,11 +10654,11 @@
     	append($$anchor, svg);
     }
 
-    var root$l = from_svg(`<svg><path d="M 19.28125 5.28125 L 9 15.5625 L 4.71875 11.28125 L 3.28125 12.71875 L 8.28125 17.71875 L 9 18.40625 L 9.71875 17.71875 L 20.71875 6.71875 Z"></path></svg>`);
+    var root$n = from_svg(`<svg><path d="M 19.28125 5.28125 L 9 15.5625 L 4.71875 11.28125 L 3.28125 12.71875 L 8.28125 17.71875 L 9 18.40625 L 9.71875 17.71875 L 20.71875 6.71875 Z"></path></svg>`);
 
     function IconCheck($$anchor, $$props) {
     	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
-    	var svg = root$l();
+    	var svg = root$n();
 
     	attribute_effect(svg, () => ({
     		xmlns: 'http://www.w3.org/2000/svg',
@@ -11005,107 +11043,157 @@
     }
 
     /**
+     * Captures the current viewport-relative position of a given element.
+     * Call this *before* a layout-shifting operation, then pass the result to `restoreScrollAnchor`.
+     *
+     * @param element The element to anchor to.
+     * @returns A `ScrollAnchor` snapshot.
+     */
+    function captureScrollAnchor(element) {
+        return { element, top: element.getBoundingClientRect().top };
+    }
+    /**
      * Calculates the total height of fixed or sticky elements at the top of the viewport.
-     * This includes the standard site header and any custom elements marked with [data-cv-scroll-offset].
-     * Used to offset scroll positions so content isn't hidden behind these fixed elements.
+     * This includes the standard site header and any custom elements marked with
+     * `[data-cv-scroll-offset]`. Used to offset scroll positions so content isn't
+     * hidden behind these fixed elements.
      */
     function getScrollTopOffset() {
         let headerHeight = 0;
         let customOffset = 0;
-        // 1. Standard Site Header if applicable
         const headerEl = document.querySelector('header');
         if (headerEl) {
-            const headerStyle = window.getComputedStyle(headerEl);
-            const isHeaderFixedOrSticky = ['fixed', 'sticky'].includes(headerStyle.position);
-            if (isHeaderFixedOrSticky) {
+            const { position } = window.getComputedStyle(headerEl);
+            if (position === 'fixed' || position === 'sticky') {
                 headerHeight = headerEl.getBoundingClientRect().height;
             }
         }
-        // 2. Custom Views Fixed Elements (e.g. Focus Banner)
-        // Elements with [data-cv-scroll-offset] are considered fixed/sticky obstructions.
-        // We use scrollHeight to get the full height even during animations (like slide transition).
+        // Elements with [data-cv-scroll-offset] are treated as fixed/sticky obstructions at the top.
+        // We use scrollHeight to account for elements mid-transition.
         document.querySelectorAll('[data-cv-scroll-offset]').forEach((el) => {
-            // We assume these elements overlap at the top (top: 0) unless a stacking context is managed.
-            // Taking the MAX ensures we clear the tallest obstruction without over-counting.
             customOffset = Math.max(customOffset, el.scrollHeight);
         });
-        // Custom elements overlay the standard header.
-        // Avoid double-counting while ensuring visibility.
+        // Custom elements overlay the standard header — avoid double-counting.
         return Math.max(headerHeight, customOffset);
     }
     /**
-     * Finds the highest element matching the selector that is currently in the viewport.
-     * @param selector The CSS selector to match elements against.
-     * @returns The HTMLElement of the highest visible element, or null if none are found.
+     * Returns the highest element matching a CSS selector that is visible in the
+     * current viewport (below any fixed/sticky header).
+     *
+     * @param selector CSS selector to match elements.
+     * @returns The highest visible matching element, or `null` if none found.
      */
     function findHighestVisibleElement(selector) {
-        const headerOffset = getScrollTopOffset();
-        const contentTop = headerOffset; // Viewport-relative position where content begins.
-        // 1. Find all matching elements, filtering out any inside the main header (if fixed/sticky).
-        const allElements = Array.from(document.querySelectorAll(selector));
+        const topOffset = getScrollTopOffset();
+        const viewportBottom = window.innerHeight;
         const headerEl = document.querySelector('header');
-        const candidateElements = allElements.filter((el) => {
-            // If header is sticky/fixed, ignore elements inside it to avoid false positives
-            if (headerOffset > 0 && headerEl && el.closest('header') === headerEl) {
-                return false;
-            }
-            return true;
-        });
-        // 2. Find the highest element visible in the content area.
-        let highestVisibleEl = null;
-        let highestVisibleTop = Infinity;
-        for (const el of candidateElements) {
-            const rect = el.getBoundingClientRect();
-            // Visible if not completely above content area and not completely below viewport
-            const isVisibleInContentArea = rect.bottom > contentTop && rect.top < window.innerHeight;
-            if (isVisibleInContentArea) {
-                // We want the one closest to the top
-                if (rect.top < highestVisibleTop) {
-                    highestVisibleEl = el;
-                    highestVisibleTop = rect.top;
-                }
+        let best = null;
+        let bestTop = Infinity;
+        for (const el of document.querySelectorAll(selector)) {
+            // Ignore elements inside a sticky/fixed header
+            if (topOffset > 0 && headerEl && el.closest('header') === headerEl)
+                continue;
+            const { top, bottom } = el.getBoundingClientRect();
+            const isVisible = bottom > topOffset && top < viewportBottom;
+            if (isVisible && top < bestTop) {
+                best = el;
+                bestTop = top;
             }
         }
-        return highestVisibleEl;
+        return best;
     }
+    /** Default implementation with SSR fallback. */
+    const defaultScheduler = (cb) => {
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+            return window.requestAnimationFrame(cb);
+        }
+        return setTimeout(() => {
+            const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+                ? performance.now()
+                : Date.now();
+            cb(now);
+        }, 16);
+    };
+    /** Internal scheduler. Can be overridden in tests via setFrameScheduler. */
+    let frameScheduler = defaultScheduler;
     /**
-     * Adjusts the scroll position to keep a specific element in the same visual location.
-     * Useful when content additions/removals above might cause jumps.
+     * Restores the visual scroll position after a layout-shifting operation.
+     *
+     * Pass a `ScrollAnchor` captured *before* the layout change.
+     * Uses two `requestAnimationFrame` ticks to ensure the browser has fully
+     * reflowed the page before measuring and correcting.
+     *
+     * Note: When calling from a Svelte component, prefer using `tick()` before
+     * calling this function so Svelte's DOM updates are applied first.
+     *
+     * @param anchor A `ScrollAnchor` captured before the layout change.
      */
-    function handleScrollAnchor(scrollAnchor) {
-        requestAnimationFrame(() => {
-            const { element, top: initialTop } = scrollAnchor;
-            // Check if element is still in document
-            if (!element || !document.contains(element))
-                return;
-            const newTop = element.getBoundingClientRect().top;
-            const scrollDelta = newTop - initialTop;
-            // Only scroll if there's a noticeable change
-            if (Math.abs(scrollDelta) > 1) {
-                window.scrollBy({
-                    top: scrollDelta,
-                    behavior: 'instant',
-                });
-            }
+    function restoreScrollAnchor(anchor) {
+        // Double-rAF: first frame commits the paint, second ensures layout is stable.
+        frameScheduler(() => {
+            frameScheduler(() => {
+                // Use isConnected instead of document.contains() — the latter returns false
+                // for elements inside Shadow DOM trees, which would silently skip restoration.
+                if (!anchor.element.isConnected)
+                    return;
+                const delta = anchor.element.getBoundingClientRect().top - anchor.top;
+                if (Math.abs(delta) > 1) {
+                    window.scrollBy({ top: delta, behavior: 'instant' });
+                }
+            });
         });
     }
 
-    var root_1$d = from_html(`<p class="description svelte-gwkhja"> </p>`);
-    var root_2$b = from_html(`<button type="button"> </button>`);
+    var root$m = from_svg(`<svg><path d="M247.31,124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57,61.26,162.88,48,128,48S61.43,61.26,36.34,86.35C17.51,105.18,9,123.97,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208s66.57-13.26,91.66-38.34c18.83-18.83,27.3-37.61,27.65-38.4A8,8,0,0,0,247.31,124.76ZM128,192c-30.78,0-57.67-11.19-79.93-33.29A169.47,169.47,0,0,1,24.7,128,169.47,169.47,0,0,1,48.07,97.29C70.33,75.19,97.22,64,128,64s57.67,11.19,79.93,33.29A169.47,169.47,0,0,1,231.3,128C223.94,141.07,184.26,192,128,192Zm0-112a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z"></path></svg>`);
+
+    function IconEye($$anchor, $$props) {
+    	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
+    	var svg = root$m();
+
+    	attribute_effect(svg, () => ({
+    		fill: 'currentColor',
+    		viewBox: '0 0 256 256',
+    		xmlns: 'http://www.w3.org/2000/svg',
+    		...rest
+    	}));
+
+    	append($$anchor, svg);
+    }
+
+    var root$l = from_svg(`<svg><path d="M53.92,34.62A8,8,0,1,0,42.08,45.38L61.32,66.55C25.2,88.84,9.38,123.2,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208a127.11,127.11,0,0,0,52.07-10.83l22,24.21a8,8,0,1,0,11.84-10.76Zm74.07,125a32,32,0,0,1-43.27-44.15l8.64,9.51a16,16,0,0,0,21.61,20.49ZM24.7,128A169.47,169.47,0,0,1,48.07,97.29C70.33,75.19,97.22,64,128,64a112.26,112.26,0,0,1,19.77,1.74l-22,24.2A48,48,0,0,0,80,128c0,1.63.08,3.24.24,4.84L53.92,109A171.58,171.58,0,0,0,24.7,128Zm223,3.26c-.35-.79-8.82-19.58-27.65-38.41C194.57,67.26,162.88,54,128,54a125.07,125.07,0,0,0-23.42,2.19,8,8,0,0,0,3,15.72A109.2,109.2,0,0,1,128,70c30.78,0,57.67,11.19,79.93,33.29A169.47,169.47,0,0,1,231.3,134c-7.09,12.66-37.13,54-90.82,63a8,8,0,0,0,2.73,15.77A128.58,128.58,0,0,0,219.66,169.5c18.83-18.83,27.3-37.61,27.65-38.4A8,8,0,0,0,247.66,131.26Z"></path></svg>`);
+
+    function IconEyeSlash($$anchor, $$props) {
+    	let rest = rest_props($$props, ['$$slots', '$$events', '$$legacy']);
+    	var svg = root$l();
+
+    	attribute_effect(svg, () => ({
+    		fill: 'currentColor',
+    		viewBox: '0 0 256 256',
+    		xmlns: 'http://www.w3.org/2000/svg',
+    		...rest
+    	}));
+
+    	append($$anchor, svg);
+    }
+
+    var root_1$e = from_html(`<p class="description svelte-gwkhja"> </p>`);
+    var root_3$7 = from_html(`<span class="segment-icon svelte-gwkhja"><!></span>`);
+    var root_2$a = from_html(`<button type="button"><!> <span class="segment-label svelte-gwkhja"> </span></button>`);
     var root$k = from_html(`<div class="card svelte-gwkhja"><div class="content svelte-gwkhja"><div><p class="title svelte-gwkhja"> </p> <!></div> <div class="segmented svelte-gwkhja" role="group" aria-label="Visibility"></div></div></div>`);
 
-    const $$css$l = {
+    const $$css$m = {
     	hash: 'svelte-gwkhja',
-    	code: '.card.svelte-gwkhja {background:var(--cv-bg);border:1px solid var(--cv-border);border-radius:var(--cv-card-radius, 0.5rem);transition:background 0.15s ease;}.card.svelte-gwkhja:hover {background:var(--cv-bg-hover);}.content.svelte-gwkhja {display:flex;align-items:center;justify-content:space-between;padding:0.75rem;}.title.svelte-gwkhja {font-weight:500;font-size:0.875rem;color:var(--cv-text);margin:0;}.description.svelte-gwkhja {font-size:0.75rem;color:var(--cv-text-secondary);margin:0.125rem 0 0 0;}.segmented.svelte-gwkhja {display:flex;border:1px solid var(--cv-border);border-radius:0.375rem;overflow:hidden;flex-shrink:0;}.segment-btn.svelte-gwkhja {background:transparent;border:none;border-left:1px solid var(--cv-border);padding:0.3rem 0.6rem;font-size:0.8rem;font-weight:500;color:var(--cv-text-secondary);cursor:pointer;transition:background 0.15s ease, color 0.15s ease;font-family:inherit;line-height:1;}.segment-btn.svelte-gwkhja:first-child {border-left:none;}.segment-btn.svelte-gwkhja:hover:not(.active) {background:var(--cv-bg-hover);color:var(--cv-text);}.segment-btn.active.svelte-gwkhja {background:var(--cv-primary);color:white;box-shadow:0 1px 3px rgba(0, 0, 0, 0.15);}'
+    	code: '.card.svelte-gwkhja {background:var(--cv-bg);border:1px solid var(--cv-border);border-radius:var(--cv-card-radius, 0.5rem);transition:background 0.15s ease;}.card.svelte-gwkhja:hover {background:var(--cv-bg-hover);}.content.svelte-gwkhja {display:flex;align-items:center;justify-content:space-between;padding:0.75rem;}.title.svelte-gwkhja {font-weight:500;font-size:0.875rem;color:var(--cv-text);margin:0;}.description.svelte-gwkhja {font-size:0.75rem;color:var(--cv-text-secondary);margin:0.125rem 0 0 0;}.segmented.svelte-gwkhja {display:flex;border:1px solid var(--cv-border);border-radius:0.375rem;overflow:hidden;flex-shrink:0;}.segment-btn.svelte-gwkhja {display:flex;align-items:center;gap:0.25rem;background:transparent;border:none;border-left:1px solid var(--cv-border);padding:0.3rem 0.6rem;font-size:0.8rem;font-weight:500;color:var(--cv-text-secondary);cursor:pointer;transition:background 0.15s ease, color 0.15s ease;font-family:inherit;line-height:1;}.segment-icon.svelte-gwkhja {display:flex;align-items:center;justify-content:center;width:14px;height:14px;flex-shrink:0;}.segment-icon.svelte-gwkhja svg {width:100%;height:100%;}.segment-label.svelte-gwkhja {font-size:0.75rem;}.segment-btn.svelte-gwkhja:first-child {border-left:none;}.segment-btn.svelte-gwkhja:hover:not(.active) {background:var(--cv-bg-hover);color:var(--cv-text);}.segment-btn.active.svelte-gwkhja {background:var(--cv-primary);color:white;box-shadow:0 1px 3px rgba(0, 0, 0, 0.15);}'
     };
 
     function ToggleItem($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$l);
+    	append_styles$1($$anchor, $$css$m);
 
     	let value = prop($$props, 'value', 15, 'show'),
     		onchange = prop($$props, 'onchange', 3, () => {});
 
+    	const icons = { hide: IconEyeSlash, show: IconEye };
     	var div = root$k();
     	var div_1 = child(div);
     	var div_2 = child(div_1);
@@ -11118,7 +11206,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var p_1 = root_1$d();
+    			var p_1 = root_1$e();
     			var text_1 = child(p_1, true);
 
     			reset(p_1);
@@ -11136,24 +11224,51 @@
     	var div_3 = sibling(div_2, 2);
 
     	each(div_3, 20, () => ['hide', 'peek', 'show'], (option) => option, ($$anchor, option) => {
-    		var button = root_2$b();
+    		var button = root_2$a();
 
     		button.__click = () => {
     			value(option);
     			onchange()({ toggleId: $$props.toggle.toggleId, value: option });
     		};
 
-    		var text_2 = child(button, true);
+    		var node_1 = child(button);
 
+    		{
+    			var consequent_1 = ($$anchor) => {
+    				const IconComponent = user_derived(() => icons[option]);
+    				var span = root_3$7();
+    				var node_2 = child(span);
+
+    				component(node_2, () => get(IconComponent), ($$anchor, IconComponent_1) => {
+    					IconComponent_1($$anchor, {});
+    				});
+
+    				reset(span);
+    				append($$anchor, span);
+    			};
+
+    			if_block(node_1, ($$render) => {
+    				if (option === 'hide' || option === 'show') $$render(consequent_1);
+    			});
+    		}
+
+    		var span_1 = sibling(node_1, 2);
+    		var text_2 = child(span_1, true);
+
+    		reset(span_1);
     		reset(button);
 
     		template_effect(
-    			($0) => {
+    			($0, $1) => {
     				set_class(button, 1, `segment-btn ${value() === option ? 'active' : ''}`, 'svelte-gwkhja');
     				set_attribute(button, 'aria-pressed', value() === option);
-    				set_text(text_2, $0);
+    				set_attribute(button, 'title', $0);
+    				set_text(text_2, $1);
     			},
-    			[() => option.charAt(0).toUpperCase() + option.slice(1)]
+    			[
+    				() => option.charAt(0).toUpperCase() + option.slice(1),
+    				() => option.charAt(0).toUpperCase() + option.slice(1)
+    			]
     		);
 
     		append($$anchor, button);
@@ -11169,18 +11284,18 @@
 
     delegate(['click']);
 
-    var root_1$c = from_html(`<p class="description svelte-uub3h8"> </p>`);
-    var root_2$a = from_html(`<option> </option>`);
+    var root_1$d = from_html(`<p class="description svelte-uub3h8"> </p>`);
+    var root_2$9 = from_html(`<option> </option>`);
     var root$j = from_html(`<div class="root svelte-uub3h8"><div class="header svelte-uub3h8"><label class="label svelte-uub3h8"> </label> <!></div> <select class="select svelte-uub3h8"></select></div>`);
 
-    const $$css$k = {
+    const $$css$l = {
     	hash: 'svelte-uub3h8',
     	code: '.root.svelte-uub3h8 {display:flex;flex-direction:column;gap:0.5rem;padding:0.75rem;background:var(--cv-bg);border:1px solid var(--cv-border);border-radius:var(--cv-card-radius, 0.5rem);transition:background 0.15s ease;}.root.svelte-uub3h8:hover {background:var(--cv-bg-hover);}\n\n  /* Remove special handling for last child since they are now separate cards */.root.svelte-uub3h8:last-child {border-bottom:1px solid var(--cv-border);}.header.svelte-uub3h8 {display:flex;flex-direction:column;gap:0.25rem;}.label.svelte-uub3h8 {font-size:0.875rem;color:var(--cv-text);margin:0;line-height:1.4;font-weight:500;display:block;cursor:pointer;}.description.svelte-uub3h8 {font-size:0.75rem;color:var(--cv-text-secondary);margin:0;line-height:1.4;}.select.svelte-uub3h8 {width:100%;border-radius:0.5rem;background:var(--cv-input-bg);border:1px solid var(--cv-input-border);color:var(--cv-text);padding:0.5rem 0.75rem;font-size:0.875rem;cursor:pointer;transition:all 0.15s ease;font-family:inherit;}.select.svelte-uub3h8:hover {border-color:var(--cv-text-secondary);}.select.svelte-uub3h8:focus {outline:none;border-color:var(--cv-primary);box-shadow:0 0 0 2px var(--cv-focus-ring);}'
     };
 
     function TabGroupItem($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$k);
+    	append_styles$1($$anchor, $$css$l);
 
     	let activeTabId = prop($$props, 'activeTabId', 15, ''),
     		onchange = prop($$props, 'onchange', 3, () => {});
@@ -11203,7 +11318,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var p = root_1$c();
+    			var p = root_1$d();
     			var text_1 = child(p, true);
 
     			reset(p);
@@ -11223,7 +11338,7 @@
     	select.__change = onChange;
 
     	each(select, 21, () => $$props.group.tabs, (tab) => tab.tabId, ($$anchor, tab) => {
-    		var option = root_2$a();
+    		var option = root_2$9();
     		var text_2 = child(option, true);
 
     		reset(option);
@@ -11269,14 +11384,14 @@
 
     var root$i = from_html(`<div class="placeholder-item svelte-1vp05mb"><label class="placeholder-label svelte-1vp05mb"> </label> <input class="placeholder-input svelte-1vp05mb" type="text"/></div>`);
 
-    const $$css$j = {
+    const $$css$k = {
     	hash: 'svelte-1vp05mb',
     	code: '.placeholder-item.svelte-1vp05mb {display:flex;flex-direction:column;gap:0.25rem;}.placeholder-label.svelte-1vp05mb {font-size:0.85rem;font-weight:500;color:var(--cv-text);}.placeholder-input.svelte-1vp05mb {padding:0.5rem 0.75rem;border:1px solid var(--cv-input-border);border-radius:var(--cv-card-radius, 0.5rem);font-size:0.9rem;transition:border-color 0.2s;background:var(--cv-input-bg);color:var(--cv-text);}.placeholder-input.svelte-1vp05mb:focus {outline:none;border-color:var(--cv-primary);box-shadow:0 0 0 2px var(--cv-focus-ring);}'
     };
 
     function PlaceholderItem($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$j);
+    	append_styles$1($$anchor, $$css$k);
 
     	let value = prop($$props, 'value', 15, ''),
     		onchange = prop($$props, 'onchange', 3, () => {});
@@ -11356,13 +11471,13 @@
         }
     }
 
-    var root_1$b = from_html(`<button type="button">Customize</button>`);
-    var root_3$4 = from_html(`<p class="description svelte-16uy9h6"> </p>`);
-    var root_5 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Toggles</div> <div class="toggles-container svelte-16uy9h6"></div></div>`);
-    var root_7 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Placeholders</div> <div class="placeholders-container svelte-16uy9h6"></div></div>`);
-    var root_9 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Tab Groups</div> <div class="tabgroups-container svelte-16uy9h6"><div class="tabgroup-card header-card svelte-16uy9h6" role="group"><div class="tabgroup-row svelte-16uy9h6"><div class="logo-box svelte-16uy9h6" id="cv-nav-icon-box"><div class="nav-icon svelte-16uy9h6"><!></div></div> <div class="tabgroup-info svelte-16uy9h6"><div class="tabgroup-title-container"><p class="tabgroup-title svelte-16uy9h6">Show only the selected tab</p></div> <p class="tabgroup-description svelte-16uy9h6">Hide the navigation headers</p></div> <label class="toggle-switch nav-toggle svelte-16uy9h6"><input class="nav-pref-input svelte-16uy9h6" type="checkbox" aria-label="Show only the selected tab"/> <span class="switch-bg svelte-16uy9h6"></span> <span class="switch-knob svelte-16uy9h6"></span></label></div></div> <div class="tab-groups-list svelte-16uy9h6"></div></div></div>`);
-    var root_4$1 = from_html(`<!> <!> <!>`, 1);
-    var root_2$9 = from_html(`<div class="tab-content active svelte-16uy9h6"><!> <!></div>`);
+    var root_1$c = from_html(`<button type="button">Customize</button>`);
+    var root_3$6 = from_html(`<p class="description svelte-16uy9h6"> </p>`);
+    var root_5$2 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Toggles</div> <div class="toggles-container svelte-16uy9h6"></div></div>`);
+    var root_7$2 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Placeholders</div> <div class="placeholders-container svelte-16uy9h6"></div></div>`);
+    var root_9$1 = from_html(`<div class="section svelte-16uy9h6"><div class="section-heading svelte-16uy9h6">Tab Groups</div> <div class="tabgroups-container svelte-16uy9h6"><div class="tabgroup-card header-card svelte-16uy9h6" role="group"><div class="tabgroup-row svelte-16uy9h6"><div class="logo-box svelte-16uy9h6" id="cv-nav-icon-box"><div class="nav-icon svelte-16uy9h6"><!></div></div> <div class="tabgroup-info svelte-16uy9h6"><div class="tabgroup-title-container"><p class="tabgroup-title svelte-16uy9h6">Show only the selected tab</p></div> <p class="tabgroup-description svelte-16uy9h6">Hide the navigation headers</p></div> <label class="toggle-switch nav-toggle svelte-16uy9h6"><input class="nav-pref-input svelte-16uy9h6" type="checkbox" aria-label="Show only the selected tab"/> <span class="switch-bg svelte-16uy9h6"></span> <span class="switch-knob svelte-16uy9h6"></span></label></div></div> <div class="tab-groups-list svelte-16uy9h6"></div></div></div>`);
+    var root_4$3 = from_html(`<!> <!> <!>`, 1);
+    var root_2$8 = from_html(`<div class="tab-content active svelte-16uy9h6"><!> <!></div>`);
     var root_16 = from_html(`<button type="button" class="share-action-btn copy-url-btn svelte-16uy9h6"><span class="btn-icon svelte-16uy9h6"><!></span> <span><!></span></button>`);
 
     var root_15 = from_html(`<div class="tab-content active svelte-16uy9h6"><div class="share-content svelte-16uy9h6"><div class="share-instruction svelte-16uy9h6">Create a shareable link for your current customization, or select specific parts of
@@ -11370,16 +11485,16 @@
 
     var root_21 = from_html(`<button type="button" class="reset-btn svelte-16uy9h6" title="Reset to Default">Reset</button>`);
     var root_22 = from_html(`<div></div>`);
-    var root$h = from_html(`<div class="modal-overlay svelte-16uy9h6" role="presentation"><div class="modal-box cv-custom-state-modal svelte-16uy9h6" role="dialog" aria-modal="true"><header class="header svelte-16uy9h6"><div class="header-content svelte-16uy9h6"><div class="modal-icon svelte-16uy9h6"><!></div> <div class="title svelte-16uy9h6"> </div></div> <button type="button" class="close-btn svelte-16uy9h6" aria-label="Close modal"><!></button></header> <main class="main svelte-16uy9h6"><div class="tabs svelte-16uy9h6"><!> <button type="button">Share</button></div> <!></main> <footer class="footer svelte-16uy9h6"><!> <a href="https://custardui.js.org" target="_blank" rel="noopener noreferrer" class="footer-link svelte-16uy9h6">custardui.js.org</a> <button type="button" class="done-btn svelte-16uy9h6">Done</button></footer></div></div>`);
+    var root$h = from_html(`<div class="modal-overlay svelte-16uy9h6" role="presentation"><div class="modal-box cv-custom-state-modal svelte-16uy9h6" role="dialog" aria-modal="true"><header class="header svelte-16uy9h6"><div class="header-content svelte-16uy9h6"><div class="modal-icon svelte-16uy9h6"><!></div> <div class="title svelte-16uy9h6"> </div></div> <button type="button" class="close-btn svelte-16uy9h6" aria-label="Close modal"><!></button></header> <main class="main svelte-16uy9h6"><div class="tabs svelte-16uy9h6"><!> <button type="button">Share</button></div> <!></main> <footer class="footer svelte-16uy9h6"><!> <div class="footer-attribution svelte-16uy9h6"><span class="footer-tagline svelte-16uy9h6">Browser-side page customisations provided by</span> <a href="https://custardui.js.org" target="_blank" rel="noopener noreferrer" class="footer-link svelte-16uy9h6">custardui.js.org</a></div> <button type="button" class="done-btn svelte-16uy9h6">Done</button></footer></div></div>`);
 
-    const $$css$i = {
+    const $$css$j = {
     	hash: 'svelte-16uy9h6',
-    	code: '\n  /* Modal Overlay & Modal Frame */.modal-overlay.svelte-16uy9h6 {position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0, 0, 0, 0.5);display:flex;align-items:center;justify-content:center;z-index:10002;}.modal-box.svelte-16uy9h6 {background:var(--cv-bg);border-radius:var(--cv-modal-radius, 0.75rem);box-shadow:0 25px 50px -12px var(--cv-shadow);max-width:32rem;width:90vw;max-height:80vh;display:flex;flex-direction:column;}.header.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;padding:0.5rem 1rem;border-bottom:1px solid var(--cv-border);}.header-content.svelte-16uy9h6 {display:flex;align-items:center;gap:0.75rem;}.modal-icon.svelte-16uy9h6 {position:relative;width:1rem;height:1rem;display:flex;align-items:center;justify-content:center;border-radius:9999px;color:var(--cv-text);}.modal-icon.svelte-16uy9h6 svg {fill:currentColor;}.title.svelte-16uy9h6 {font-size:1.125rem;font-weight:bold;color:var(--cv-text);margin:0;}.close-btn.svelte-16uy9h6 {width:2rem;height:2rem;display:flex;align-items:center;justify-content:center;border-radius:9999px;background:transparent;border:none;color:var(--cv-text-secondary);cursor:pointer;transition:all 0.2s ease;}.close-btn.svelte-16uy9h6:hover {background:rgba(62, 132, 244, 0.1);color:var(--cv-primary);}.main.svelte-16uy9h6 {padding:1rem;flex:1;display:flex;flex-direction:column;overflow-y:auto;max-height:calc(80vh - 8rem);min-height:var(--cv-modal-min-height, 20rem);}.description.svelte-16uy9h6 {font-size:0.875rem;color:var(--cv-text);margin:0 0 1rem 0;line-height:1.4;}\n\n  /* Tabs */.tabs.svelte-16uy9h6 {display:flex;margin-bottom:1rem;border-bottom:2px solid var(--cv-border);}.tab.svelte-16uy9h6 {background:transparent;border:none;padding:0.5rem 1rem;font-size:0.9rem;font-weight:600;color:var(--cv-text-secondary);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;}.tab.active.svelte-16uy9h6 {color:var(--cv-primary);border-bottom-color:var(--cv-primary);}.tab-content.svelte-16uy9h6 {display:none;}.tab-content.active.svelte-16uy9h6 {display:block;}\n\n  /* Section Styling */.section.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;margin-bottom:1.5rem;}.section-heading.svelte-16uy9h6 {font-size:0.7rem;font-weight:600;color:var(--cv-text-secondary);text-transform:var(--cv-section-label-transform, uppercase);letter-spacing:0.08em;margin:0;}.toggles-container.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.5rem;overflow:hidden;}\n\n  /* Tab Groups Section specific */.tabgroups-container.svelte-16uy9h6 {border-radius:0.5rem;}\n\n  /* Nav Toggle Card */.tabgroup-card.svelte-16uy9h6 {background:var(--cv-bg);border-bottom:1px solid var(--cv-border);}.tabgroup-card.header-card.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;padding:0.75rem;border:1px solid var(--cv-border);border-radius:0.5rem;margin-bottom:0.75rem;}.tabgroup-row.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;width:100%;gap:1rem;}.logo-box.svelte-16uy9h6 {width:3rem;height:3rem;background:var(--cv-modal-icon-bg);border-radius:0.5rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;}.nav-icon.svelte-16uy9h6 {width:2rem;height:2rem;color:var(--cv-text);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:color 0.2s ease;}.tabgroup-info.svelte-16uy9h6 {flex:1;display:flex;flex-direction:column;gap:0.25rem;}.tabgroup-title.svelte-16uy9h6 {font-weight:500;font-size:0.875rem;color:var(--cv-text);margin:0 0 0 0;}.tabgroup-description.svelte-16uy9h6 {font-size:0.75rem;color:var(--cv-text-secondary);margin:0;line-height:1.3;}\n\n  /* Toggle Switch */.toggle-switch.svelte-16uy9h6 {position:relative;display:inline-flex;align-items:center;width:44px;height:24px;background:var(--cv-switch-bg);border-radius:9999px;padding:2px;box-sizing:border-box;cursor:pointer;transition:background-color 0.2s ease;border:none;}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6) {display:none;}.toggle-switch.svelte-16uy9h6 .switch-bg:where(.svelte-16uy9h6) {position:absolute;inset:0;border-radius:9999px;background:var(--cv-switch-bg);transition:background-color 0.2s ease;pointer-events:none;}.toggle-switch.svelte-16uy9h6 .switch-knob:where(.svelte-16uy9h6) {position:relative;width:20px;height:20px;background:var(--cv-switch-knob);border-radius:50%;box-shadow:0 1px 2px rgba(0, 0, 0, 0.1);transition:transform 0.2s ease;transform:translateX(0);}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6):checked ~ .switch-knob:where(.svelte-16uy9h6) {transform:translateX(20px);}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6):checked ~ .switch-bg:where(.svelte-16uy9h6) {background:var(--cv-primary);}\n\n  /* Tab Groups List */.tab-groups-list.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;}\n\n  /* Footer */.footer.svelte-16uy9h6 {padding:0.75rem 1rem;border-top:1px solid var(--cv-border);display:flex;align-items:center;justify-content:space-between;background:var(--cv-bg);border-bottom-left-radius:var(--cv-modal-radius, 0.75rem);border-bottom-right-radius:var(--cv-modal-radius, 0.75rem);}.footer-link.svelte-16uy9h6 {align-self:flex-end;color:var(--cv-text-secondary);text-decoration:none;font-size:0.68rem;font-weight:500;letter-spacing:0.08em;opacity:0.5;transition:color 0.15s ease, opacity 0.15s ease;}.footer-link.svelte-16uy9h6:hover {color:var(--cv-primary);opacity:1;}.reset-btn.svelte-16uy9h6 {display:flex;align-items:center;gap:0.4rem;background:transparent;border:none;font-size:0.875rem;font-weight:500;color:var(--cv-text-secondary);cursor:pointer;padding:0.4rem 0.5rem;border-radius:0.5rem;transition:all 0.2s ease;}.reset-btn.svelte-16uy9h6:hover {background:var(--cv-danger-bg);color:var(--cv-danger);}.done-btn.svelte-16uy9h6 {background:var(--cv-primary);color:white;border:none;padding:0.5rem 1.1rem;border-radius:0.5rem;font-weight:600;font-size:0.875rem;cursor:pointer;box-shadow:0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);transition:background-color 0.15s ease, box-shadow 0.15s ease;}.done-btn.svelte-16uy9h6:hover {background:var(--cv-primary-hover);box-shadow:0 3px 6px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);}\n\n  /* Share Tab Styles */.share-content.svelte-16uy9h6 {display:flex;flex-direction:column;gap:1rem;align-items:center;text-align:center;padding:1rem 0;}.share-instruction.svelte-16uy9h6 {font-size:0.95rem;color:var(--cv-text-secondary);margin-bottom:0.5rem;}.share-action-btn.svelte-16uy9h6 {display:flex;align-items:center;justify-content:center;gap:0.75rem;width:100%;max-width:320px;padding:0.75rem 1rem;border-radius:0.5rem;font-weight:500;font-size:0.95rem;cursor:pointer;transition:all 0.2s ease;border:1px solid var(--cv-border);background:var(--cv-bg);color:var(--cv-text);}.share-action-btn.svelte-16uy9h6:hover {border-color:var(--cv-primary);color:var(--cv-primary);background:var(--cv-bg-hover);}.share-action-btn.primary.svelte-16uy9h6 {background:var(--cv-primary);border-color:var(--cv-primary);color:white;}.share-action-btn.primary.svelte-16uy9h6:hover {background:var(--cv-primary-hover);border-color:var(--cv-primary-hover);}.btn-icon.svelte-16uy9h6 {display:flex;align-items:center;justify-content:center;width:1.25rem;height:1.25rem;}\n\n  /* Placeholder Inputs */.placeholders-container.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;}'
+    	code: '\n  /* Modal Overlay & Modal Frame */.modal-overlay.svelte-16uy9h6 {position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0, 0, 0, 0.5);display:flex;align-items:center;justify-content:center;z-index:10002;}.modal-box.svelte-16uy9h6 {background:var(--cv-bg);border-radius:var(--cv-modal-radius, 0.75rem);box-shadow:0 25px 50px -12px var(--cv-shadow);max-width:32rem;width:90vw;max-height:80vh;display:flex;flex-direction:column;}.header.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;padding:0.5rem 1rem;border-bottom:1px solid var(--cv-border);}.header-content.svelte-16uy9h6 {display:flex;align-items:center;gap:0.75rem;}.modal-icon.svelte-16uy9h6 {position:relative;width:1rem;height:1rem;display:flex;align-items:center;justify-content:center;border-radius:9999px;color:var(--cv-text);}.modal-icon.svelte-16uy9h6 svg {fill:currentColor;}.title.svelte-16uy9h6 {font-size:1.125rem;font-weight:bold;color:var(--cv-text);margin:0;}.close-btn.svelte-16uy9h6 {width:2rem;height:2rem;display:flex;align-items:center;justify-content:center;border-radius:9999px;background:transparent;border:none;color:var(--cv-text-secondary);cursor:pointer;transition:all 0.2s ease;}.close-btn.svelte-16uy9h6:hover {background:rgba(62, 132, 244, 0.1);color:var(--cv-primary);}.main.svelte-16uy9h6 {padding:1rem;flex:1;display:flex;flex-direction:column;overflow-y:auto;max-height:calc(80vh - 8rem);min-height:var(--cv-modal-min-height, 20rem);}.description.svelte-16uy9h6 {font-size:0.875rem;color:var(--cv-text);margin:0 0 1rem 0;line-height:1.4;}\n\n  /* Tabs */.tabs.svelte-16uy9h6 {display:flex;margin-bottom:1rem;border-bottom:2px solid var(--cv-border);}.tab.svelte-16uy9h6 {background:transparent;border:none;padding:0.5rem 1rem;font-size:0.9rem;font-weight:600;color:var(--cv-text-secondary);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;}.tab.active.svelte-16uy9h6 {color:var(--cv-primary);border-bottom-color:var(--cv-primary);}.tab-content.svelte-16uy9h6 {display:none;}.tab-content.active.svelte-16uy9h6 {display:block;}\n\n  /* Section Styling */.section.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;margin-bottom:1.5rem;}.section-heading.svelte-16uy9h6 {font-size:0.7rem;font-weight:600;color:var(--cv-text-secondary);text-transform:var(--cv-section-label-transform, uppercase);letter-spacing:0.08em;margin:0;}.toggles-container.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.5rem;overflow:hidden;}\n\n  /* Tab Groups Section specific */.tabgroups-container.svelte-16uy9h6 {border-radius:0.5rem;}\n\n  /* Nav Toggle Card */.tabgroup-card.svelte-16uy9h6 {background:var(--cv-bg);border-bottom:1px solid var(--cv-border);}.tabgroup-card.header-card.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;padding:0.75rem;border:1px solid var(--cv-border);border-radius:0.5rem;margin-bottom:0.75rem;}.tabgroup-row.svelte-16uy9h6 {display:flex;align-items:center;justify-content:space-between;width:100%;gap:1rem;}.logo-box.svelte-16uy9h6 {width:3rem;height:3rem;background:var(--cv-modal-icon-bg);border-radius:0.5rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;}.nav-icon.svelte-16uy9h6 {width:2rem;height:2rem;color:var(--cv-text);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:color 0.2s ease;}.tabgroup-info.svelte-16uy9h6 {flex:1;display:flex;flex-direction:column;gap:0.25rem;}.tabgroup-title.svelte-16uy9h6 {font-weight:500;font-size:0.875rem;color:var(--cv-text);margin:0 0 0 0;}.tabgroup-description.svelte-16uy9h6 {font-size:0.75rem;color:var(--cv-text-secondary);margin:0;line-height:1.3;}\n\n  /* Toggle Switch */.toggle-switch.svelte-16uy9h6 {position:relative;display:inline-flex;align-items:center;width:44px;height:24px;background:var(--cv-switch-bg);border-radius:9999px;padding:2px;box-sizing:border-box;cursor:pointer;transition:background-color 0.2s ease;border:none;}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6) {display:none;}.toggle-switch.svelte-16uy9h6 .switch-bg:where(.svelte-16uy9h6) {position:absolute;inset:0;border-radius:9999px;background:var(--cv-switch-bg);transition:background-color 0.2s ease;pointer-events:none;}.toggle-switch.svelte-16uy9h6 .switch-knob:where(.svelte-16uy9h6) {position:relative;width:20px;height:20px;background:var(--cv-switch-knob);border-radius:50%;box-shadow:0 1px 2px rgba(0, 0, 0, 0.1);transition:transform 0.2s ease;transform:translateX(0);}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6):checked ~ .switch-knob:where(.svelte-16uy9h6) {transform:translateX(20px);}.toggle-switch.svelte-16uy9h6 input:where(.svelte-16uy9h6):checked ~ .switch-bg:where(.svelte-16uy9h6) {background:var(--cv-primary);}\n\n  /* Tab Groups List */.tab-groups-list.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;}\n\n  /* Footer */.footer.svelte-16uy9h6 {padding:0.75rem 1rem;border-top:1px solid var(--cv-border);display:flex;align-items:center;justify-content:space-between;background:var(--cv-bg);border-bottom-left-radius:var(--cv-modal-radius, 0.75rem);border-bottom-right-radius:var(--cv-modal-radius, 0.75rem);}.footer-attribution.svelte-16uy9h6 {display:flex;flex-direction:column;align-items:center;text-align:center;gap:0.1rem;opacity:0.5;transition:opacity 0.15s ease;}.footer-attribution.svelte-16uy9h6:hover {opacity:1;}.footer-tagline.svelte-16uy9h6 {font-size:0.6rem;color:var(--cv-text-secondary);letter-spacing:0.04em;}.footer-link.svelte-16uy9h6 {color:var(--cv-text-secondary);text-decoration:none;font-size:0.68rem;font-weight:600;letter-spacing:0.08em;transition:color 0.15s ease;}.footer-link.svelte-16uy9h6:hover {color:var(--cv-primary);}.reset-btn.svelte-16uy9h6 {display:flex;align-items:center;gap:0.4rem;background:transparent;border:none;font-size:0.875rem;font-weight:500;color:var(--cv-text-secondary);cursor:pointer;padding:0.4rem 0.5rem;border-radius:0.5rem;transition:all 0.2s ease;}.reset-btn.svelte-16uy9h6:hover {background:var(--cv-danger-bg);color:var(--cv-danger);}.done-btn.svelte-16uy9h6 {background:var(--cv-primary);color:white;border:none;padding:0.5rem 1.1rem;border-radius:0.5rem;font-weight:600;font-size:0.875rem;cursor:pointer;box-shadow:0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);transition:background-color 0.15s ease, box-shadow 0.15s ease;}.done-btn.svelte-16uy9h6:hover {background:var(--cv-primary-hover);box-shadow:0 3px 6px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);}\n\n  /* Share Tab Styles */.share-content.svelte-16uy9h6 {display:flex;flex-direction:column;gap:1rem;align-items:center;text-align:center;padding:1rem 0;}.share-instruction.svelte-16uy9h6 {font-size:0.95rem;color:var(--cv-text-secondary);margin-bottom:0.5rem;}.share-action-btn.svelte-16uy9h6 {display:flex;align-items:center;justify-content:center;gap:0.75rem;width:100%;max-width:320px;padding:0.75rem 1rem;border-radius:0.5rem;font-weight:500;font-size:0.95rem;cursor:pointer;transition:all 0.2s ease;border:1px solid var(--cv-border);background:var(--cv-bg);color:var(--cv-text);}.share-action-btn.svelte-16uy9h6:hover {border-color:var(--cv-primary);color:var(--cv-primary);background:var(--cv-bg-hover);}.share-action-btn.primary.svelte-16uy9h6 {background:var(--cv-primary);border-color:var(--cv-primary);color:white;}.share-action-btn.primary.svelte-16uy9h6:hover {background:var(--cv-primary-hover);border-color:var(--cv-primary-hover);}.btn-icon.svelte-16uy9h6 {display:flex;align-items:center;justify-content:center;width:1.25rem;height:1.25rem;}\n\n  /* Placeholder Inputs */.placeholders-container.svelte-16uy9h6 {display:flex;flex-direction:column;gap:0.75rem;}'
     };
 
     function Modal($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$i);
+    	append_styles$1($$anchor, $$css$j);
 
     	/* eslint-disable @typescript-eslint/no-explicit-any */
     	let onclose = prop($$props, 'onclose', 3, () => {}),
@@ -11463,19 +11578,13 @@
 
     	function handleTabGroupChange(detail) {
     		const { groupId, tabId } = detail;
-
-    		// Capture element and its current visual position before state change
     		const anchorEl = findHighestVisibleElement('cv-tabgroup');
+    		const scrollAnchor = anchorEl ? captureScrollAnchor(anchorEl) : null;
 
-    		const scrollAnchor = anchorEl
-    			? { element: anchorEl, top: anchorEl.getBoundingClientRect().top }
-    			: null;
+    		activeStateStore.setMarkedTab(groupId, tabId);
 
-    		activeStateStore.setPinnedTab(groupId, tabId);
-
-    		// Restore visual position after layout shift
     		if (scrollAnchor) {
-    			handleScrollAnchor(scrollAnchor);
+    			restoreScrollAnchor(scrollAnchor);
     		}
     	}
 
@@ -11554,7 +11663,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var button_1 = root_1$b();
+    			var button_1 = root_1$c();
 
     			button_1.__click = () => set(activeTab, 'customize');
     			template_effect(() => set_class(button_1, 1, `tab ${get(activeTab) === 'customize' ? 'active' : ''}`, 'svelte-16uy9h6'));
@@ -11575,12 +11684,12 @@
 
     	{
     		var consequent_7 = ($$anchor) => {
-    			var div_6 = root_2$9();
+    			var div_6 = root_2$8();
     			var node_4 = child(div_6);
 
     			{
     				var consequent_1 = ($$anchor) => {
-    					var p = root_3$4();
+    					var p = root_3$6();
     					var text_1 = child(p, true);
 
     					reset(p);
@@ -11596,12 +11705,12 @@
     			var node_5 = sibling(node_4, 2);
 
     			each(node_5, 16, () => get(sectionOrder), (section) => section, ($$anchor, section) => {
-    				var fragment = root_4$1();
+    				var fragment = root_4$3();
     				var node_6 = first_child(fragment);
 
     				{
     					var consequent_2 = ($$anchor) => {
-    						var div_7 = root_5();
+    						var div_7 = root_5$2();
     						var div_8 = sibling(child(div_7), 2);
 
     						each(div_8, 21, () => get(toggles), (toggle) => toggle.toggleId, ($$anchor, toggle) => {
@@ -11636,7 +11745,7 @@
 
     				{
     					var consequent_3 = ($$anchor) => {
-    						var div_9 = root_7();
+    						var div_9 = root_7$2();
     						var div_10 = sibling(child(div_9), 2);
 
     						each(div_10, 21, () => get(placeholderDefinitions), (def) => def.name, ($$anchor, def) => {
@@ -11671,7 +11780,7 @@
 
     				{
     					var consequent_6 = ($$anchor) => {
-    						var div_11 = root_9();
+    						var div_11 = root_9$1();
     						var div_12 = sibling(child(div_11), 2);
     						var div_13 = child(div_12);
     						var div_14 = child(div_13);
@@ -11929,7 +12038,6 @@
     const MAX_ANNOTATION_LENGTH = 280;
     const ANNOTATION_PREVIEW_LENGTH = 40;
 
-    /* eslint-disable @typescript-eslint/no-explicit-any */
     /**
      * Generates a simple hash code for a string.
      */
@@ -11945,18 +12053,87 @@
         return hash;
     }
     /**
-     * Normalizes text content by removing excessive whitespace.
+     * Matches raw (un-hydrated) placeholder tokens in text content, including
+     * escaped forms like \[[ name ]]:
+     *   [[ name ]], [[ name : fallback ]], [[ name ? truthy : falsy ]], \[[ name ]]
+     * Captures the placeholder name in group 1. Used to normalize tokens before hashing.
+     *
+     * The optional `(?:\\)?` prefix intentionally consumes the leading backslash so that
+     * \[[ name ]] normalizes to [[name]] — the same canonical form that PlaceholderBinder
+     * emits for escaped tokens ([[ name ]] literal text). This keeps the hash stable
+     * across raw and hydrated DOM states.
      */
-    function normalizeText(text) {
-        return text.trim().replace(/\s+/g, ' ');
+    const RAW_PLACEHOLDER_RE = /(?:\\)?\[\[\s*([a-zA-Z0-9_-]+)[^\]]*\]\]/g;
+    /**
+     * Recursively walks `node`, appending stable placeholder-canonical text to `parts`.
+     * - Text nodes: raw [[ ... ]] tokens are normalized to [[name]] before appending.
+     * - <cv-placeholder> elements: appends [[name]] from the `name` attribute; skips children
+     *   (children hold the live resolved value, not the canonical template form).
+     * - All other elements: recurse into children.
+     */
+    function collectStableText(node, parts) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.nodeValue || '';
+            parts.push(text.replace(RAW_PLACEHOLDER_RE, '[[$1]]'));
+        }
+        else if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node;
+            if (el.tagName === 'CV-PLACEHOLDER') {
+                parts.push(`[[${el.getAttribute('name') || ''}]]`);
+                return; // Skip children — they contain the resolved runtime value
+            }
+            for (let i = 0; i < el.childNodes.length; i++) {
+                collectStableText(el.childNodes[i], parts);
+            }
+        }
     }
+    /**
+     * Returns the text content of an element with all <cv-placeholder> custom elements
+     * replaced by their canonical [[name]] template form.
+     *
+     * This produces a stable string regardless of the placeholder's current resolved value
+     * or whether it has been hydrated yet — enabling consistent hashing across share and load time.
+     *
+     * Without this, an element containing [[username]] resolved to "alice" would hash as
+     * "Hello alice!" at share-time but "Hello [[username]]!" at load-time, causing resolution to fail.
+     */
+    function getStableTextContent(el) {
+        // Special case: el itself is a <cv-placeholder> — return canonical form directly.
+        if (el.tagName === 'CV-PLACEHOLDER') {
+            return `[[${el.getAttribute('name') || ''}]]`;
+        }
+        // Fast path: if no raw [[ tokens and no <cv-placeholder> descendants,
+        // there are no placeholders — return textContent directly (native, no allocation).
+        // Check textContent first to avoid the querySelector when raw tokens are present
+        // (raw DOM elements with [[ tokens always need the slow path).
+        const rawText = el.textContent || '';
+        if (!rawText.includes('[[')) {
+            const hasHydrated = el.querySelector('cv-placeholder') !== null;
+            if (!hasHydrated) {
+                return rawText;
+            }
+        }
+        // Slow path: walk the DOM to canonicalize all placeholder forms.
+        const parts = [];
+        for (let i = 0; i < el.childNodes.length; i++) {
+            collectStableText(el.childNodes[i], parts);
+        }
+        return parts.join('');
+    }
+    /**
+     * Combines getStableTextContent and normalizeText into a single call.
+     * Used wherever element text is computed for hashing or comparison.
+     */
+    function getStableNormalizedText(el) {
+        return getStableTextContent(el).trim().replace(/\s+/g, ' ');
+    }
+
     /**
      * Creates an AnchorDescriptor for a given DOM element.
      */
     function createDescriptor(el) {
         const tag = el.tagName;
-        const textContent = el.textContent || '';
-        const normalizedText = normalizeText(textContent);
+        const normalizedText = getStableNormalizedText(el);
         // Find nearest parent with an ID
         let parentId;
         let parent = el.parentElement;
@@ -11983,6 +12160,10 @@
         }
         return descriptor;
     }
+
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const COLOR_KEYS = new Set(HIGHLIGHT_COLORS.map((c) => c.key));
+    const CORNER_KEYS = new Set(ANNOTATION_CORNERS);
     /**
      * Serializes a list of AnchorDescriptors into a URL-safe string.
      */
@@ -11997,16 +12178,16 @@
             h: d.textHash,
             id: d.elementId,
             ...(d.color && d.color !== DEFAULT_COLOR_KEY ? { c: d.color } : {}),
+            ...(d.annotationCorner && d.annotationCorner !== DEFAULT_ANNOTATION_CORNER ? { nc: d.annotationCorner } : {}),
             ...(d.annotation ? { n: d.annotation } : {}),
-            ...(d.annotation && d.annotationCorner && d.annotationCorner !== DEFAULT_ANNOTATION_CORNER
-                ? { nc: d.annotationCorner }
-                : {}),
         }));
         // When all elements have stable IDs, use a human-readable format.
         // Annotations are encoded via encodeURIComponent so the format stays URL-readable.
         // Format per element:
         //   no color, no note  → "id"
         //   color only         → "id:color"
+        //   corner only        → "id::corner"
+        //   color + corner     → "id:color:corner"
         //   color + note       → "id:color:corner:encodedNote"  (always 4 parts)
         //   note, no color     → "id::corner:encodedNote"
         const allHaveIds = minified.every((m) => !!m.id);
@@ -12015,9 +12196,12 @@
                 const id = m.id;
                 const c = m.c ?? '';
                 const n = m.n;
-                const nc = m.nc ?? DEFAULT_ANNOTATION_CORNER;
+                const nc = m.nc;
                 if (n) {
-                    return `${id}:${c}:${nc}:${encodeURIComponent(n)}`;
+                    return `${id}:${c}:${nc ?? DEFAULT_ANNOTATION_CORNER}:${encodeURIComponent(n)}`;
+                }
+                if (nc) {
+                    return `${id}:${c}:${nc}`;
                 }
                 return c ? `${id}:${c}` : id;
             }).join(',');
@@ -12078,6 +12262,9 @@
                     descriptor.annotation = m.n;
                     descriptor.annotationCorner = (m.nc ?? DEFAULT_ANNOTATION_CORNER);
                 }
+                else if (m.nc) {
+                    descriptor.annotationCorner = m.nc;
+                }
                 return descriptor;
             });
         }
@@ -12086,13 +12273,13 @@
             return parseIds(encoded);
         }
     }
-    const COLOR_KEYS = new Set(HIGHLIGHT_COLORS.map((c) => c.key));
-    const CORNER_KEYS = new Set(ANNOTATION_CORNERS);
     /**
      * Parses a space-separated, plus-separated, or comma-separated list of IDs into a list of AnchorDescriptors.
      * Supports:
      *   "id"                        — ID only
      *   "id:color"                  — with color
+     *   "id:color:corner"           — color + corner, no note
+     *   "id::corner"                — corner only, no color, no note
      *   "id:color:corner:note"      — with color + annotation (note is percent-encoded)
      *   "id::corner:note"           — annotation, no color
      */
@@ -12124,6 +12311,16 @@
                     annotation = noteSeg;
                 }
             }
+            else if (segs.length === 3) {
+                // "id:color:corner" — corner without note
+                id = segs[0];
+                const colorSeg = segs[1];
+                const cornerSeg = segs[2];
+                if (COLOR_KEYS.has(colorSeg))
+                    color = colorSeg;
+                if (CORNER_KEYS.has(cornerSeg))
+                    annotationCorner = cornerSeg;
+            }
             else if (segs.length === 2) {
                 // "id:color"
                 const colorSeg = segs[1];
@@ -12141,13 +12338,14 @@
             };
             if (color !== undefined)
                 descriptor.color = color;
-            if (annotation !== undefined && annotationCorner !== undefined) {
+            if (annotation !== undefined)
                 descriptor.annotation = annotation;
+            if (annotationCorner !== undefined)
                 descriptor.annotationCorner = annotationCorner;
-            }
             return descriptor;
         });
     }
+
     const SCORE_EXACT_HASH = 50;
     const SCORE_SNIPPET_START = 30;
     const SCORE_INDEX_MATCH = 10;
@@ -12189,12 +12387,14 @@
         // Optimization: Structural Check First (Fastest)
         // If we trust the structure hasn't changed, the element at the specific index
         // is effectively O(1) access if we assume `querySelectorAll` order is stable.
+        // Cache the computed text so the full scan can reuse it if this check fails.
+        let indexCandidateText = null;
         if (candidates[descriptor.index]) {
             const candidate = candidates[descriptor.index];
-            const text = normalizeText(candidate.textContent || '');
+            indexCandidateText = getStableNormalizedText(candidate);
             // Perfect Match Check: If index + hash match, it's virtually guaranteed.
             // This avoids checking every other candidate.
-            if (hashCode(text) === descriptor.textHash) {
+            if (hashCode(indexCandidateText) === descriptor.textHash) {
                 return [candidate];
             }
         }
@@ -12205,7 +12405,10 @@
         for (let i = 0; i < candidates.length; i++) {
             const candidate = candidates[i];
             let score = 0;
-            const text = normalizeText(candidate.textContent || '');
+            // Reuse already-computed text for the index candidate to avoid duplicate DOM walk.
+            const text = i === descriptor.index && indexCandidateText !== null
+                ? indexCandidateText
+                : getStableNormalizedText(candidate);
             // Content Match
             if (hashCode(text) === descriptor.textHash) {
                 score += SCORE_EXACT_HASH;
@@ -12492,7 +12695,11 @@
     		const trimmed = text.trim();
 
     		if (trimmed.length === 0) {
-    			this.highlightAnnotations.delete(el);
+    			if (corner !== DEFAULT_ANNOTATION_CORNER) {
+    				this.highlightAnnotations.set(el, { text: '', corner });
+    			} else {
+    				this.highlightAnnotations.delete(el);
+    			}
     		} else {
     			const validatedText = trimmed.length > MAX_ANNOTATION_LENGTH ? trimmed.substring(0, MAX_ANNOTATION_LENGTH) : trimmed;
 
@@ -12756,23 +12963,23 @@
     	return zoom;
     }
 
-    var root_1$a = from_html(`<div role="alert" aria-live="polite"> </div>`);
+    var root_1$b = from_html(`<div role="alert" aria-live="polite"> </div>`);
     var root$g = from_html(`<div class="toast-container svelte-14irt8g"></div>`);
 
-    const $$css$h = {
+    const $$css$i = {
     	hash: 'svelte-14irt8g',
     	code: '.toast-container.svelte-14irt8g {position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:20000;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none; /* Let clicks pass through container */}.toast-item.svelte-14irt8g {background:rgba(0, 0, 0, 0.85);color:white;padding:10px 20px;border-radius:4px;font-size:14px;box-shadow:0 4px 6px rgba(0, 0, 0, 0.1);pointer-events:auto; /* Re-enable clicks on toasts */max-width:300px;text-align:center;}'
     };
 
     function Toast($$anchor, $$props) {
     	push($$props, false);
-    	append_styles$1($$anchor, $$css$h);
+    	append_styles$1($$anchor, $$css$i);
     	init();
 
     	var div = root$g();
 
     	each(div, 13, () => toast.items, (t) => t.id, ($$anchor, t) => {
-    		var div_1 = root_1$a();
+    		var div_1 = root_1$b();
     		var text = child(div_1, true);
 
     		reset(div_1);
@@ -12795,14 +13002,14 @@
 
     var root$f = from_html(`<div class="floating-bar svelte-bs8cbd"><div class="mode-toggle svelte-bs8cbd"><button type="button" title="Highlight selected elements">Highlight</button> <button type="button" title="Show only selected elements">Show</button> <button type="button" title="Hide selected elements">Hide</button></div> <span class="divider svelte-bs8cbd"></span> <span class="count svelte-bs8cbd"> </span> <button type="button" class="btn clear svelte-bs8cbd">Clear</button> <button type="button" class="btn preview svelte-bs8cbd">Preview</button> <button type="button" class="btn generate svelte-bs8cbd">Copy Link</button> <button type="button" class="btn exit svelte-bs8cbd">Exit</button></div>`);
 
-    const $$css$g = {
+    const $$css$h = {
     	hash: 'svelte-bs8cbd',
     	code: '.floating-bar.svelte-bs8cbd {position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background-color:#2c2c2c;color:#f1f1f1;border-radius:8px;padding:8px 12px;box-shadow:0 8px 20px rgba(0, 0, 0, 0.4);display:grid;grid-template-columns:auto auto 1fr auto auto auto auto;align-items:center;gap:12px;z-index:99999;font-family:system-ui,\n      -apple-system,\n      sans-serif;font-size:14px;border:1px solid #4a4a4a;pointer-events:auto;white-space:nowrap;min-width:500px;}.mode-toggle.svelte-bs8cbd {display:flex;background:#1a1a1a;border-radius:6px;padding:2px;border:1px solid #4a4a4a;}.mode-btn.svelte-bs8cbd {background:transparent;color:#aeaeae;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.2s;}.mode-btn.svelte-bs8cbd:hover {color:#fff;}.mode-btn.active.svelte-bs8cbd {background:#4a4a4a;color:#fff;box-shadow:0 1px 3px rgba(0, 0, 0, 0.2);}.divider.svelte-bs8cbd {width:1px;height:20px;background:#4a4a4a;margin:0 4px;}.count.svelte-bs8cbd {font-weight:500;min-width:120px;text-align:center;font-size:13px;color:#ccc;}.btn.svelte-bs8cbd {background-color:#0078d4;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-weight:500;transition:background-color 0.2s;font-size:13px;}.btn.svelte-bs8cbd:hover {background-color:#005a9e;}.btn.clear.svelte-bs8cbd {background-color:transparent;border:1px solid #5a5a5a;color:#dadada;}.btn.clear.svelte-bs8cbd:hover {background-color:#3a3a3a;color:white;}.btn.preview.svelte-bs8cbd {background-color:#333;border:1px solid #555;}.btn.preview.svelte-bs8cbd:hover {background-color:#444;}.btn.exit.svelte-bs8cbd {background-color:transparent;color:#ff6b6b;padding:6px 10px;}.btn.exit.svelte-bs8cbd:hover {background-color:rgba(255, 107, 107, 0.1);}\n\n  @media (max-width: 600px) {.floating-bar.svelte-bs8cbd {display:flex;flex-wrap:wrap;min-width:unset;width:90%;max-width:400px;height:auto;padding:12px;gap:10px;bottom:30px;}.mode-toggle.svelte-bs8cbd {margin-right:auto;order:1;}.btn.exit.svelte-bs8cbd {margin-left:auto;order:2;}.divider.svelte-bs8cbd {display:none;}.count.svelte-bs8cbd {width:100%;text-align:center;order:3;padding:8px 0;border-top:1px solid #3a3a3a;border-bottom:1px solid #3a3a3a;margin:4px 0;}.btn.clear.svelte-bs8cbd,\n    .btn.preview.svelte-bs8cbd,\n    .btn.generate.svelte-bs8cbd {flex:1;text-align:center;font-size:12px;padding:8px 4px;order:4;}.btn.generate.svelte-bs8cbd {flex:1.5;}\n  }'
     };
 
     function ShareToolbar($$anchor, $$props) {
     	push($$props, false);
-    	append_styles$1($$anchor, $$css$g);
+    	append_styles$1($$anchor, $$css$h);
 
     	function handleClear() {
     		shareStore.clearAllSelections();
@@ -12880,18 +13087,18 @@
 
     delegate(['click']);
 
-    var root_2$8 = from_html(`<span class="id-badge svelte-64gpkh" title="ID detection active"> </span>`);
-    var root_3$3 = from_html(`<button type="button" class="action-btn up svelte-64gpkh" title="Select Parent">↰</button>`);
-    var root_1$9 = from_html(`<div class="hover-helper svelte-64gpkh"><div class="info svelte-64gpkh"><span class="tag svelte-64gpkh"> </span> <!></div> <button type="button"> </button> <!></div>`);
+    var root_2$7 = from_html(`<span class="id-badge svelte-64gpkh" title="ID detection active"> </span>`);
+    var root_3$5 = from_html(`<button type="button" class="action-btn up svelte-64gpkh" title="Select Parent">↰</button>`);
+    var root_1$a = from_html(`<div class="hover-helper svelte-64gpkh"><div class="info svelte-64gpkh"><span class="tag svelte-64gpkh"> </span> <!></div> <button type="button"> </button> <!></div>`);
 
-    const $$css$f = {
+    const $$css$g = {
     	hash: 'svelte-64gpkh',
     	code: '.hover-helper.svelte-64gpkh {position:fixed;z-index:99999;background-color:#333;color:white;padding:4px 8px;border-radius:4px;display:flex;align-items:center;gap:8px;box-shadow:0 2px 5px rgba(0, 0, 0, 0.2);font-family:monospace;pointer-events:auto;}.info.svelte-64gpkh {display:flex;flex-direction:column;align-items:flex-start;line-height:1;gap:2px;}.tag.svelte-64gpkh {font-size:12px;font-weight:bold;color:#aeaeae;}.id-badge.svelte-64gpkh {font-size:10px;color:#64d2ff;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.action-btn.svelte-64gpkh {background:#555;border:none;color:white;border-radius:3px;cursor:pointer;padding:2px 6px;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background-color 0.1s;}.action-btn.svelte-64gpkh:hover {background:#777;}.action-btn.deselect.svelte-64gpkh {background-color:#d13438;}.action-btn.deselect.svelte-64gpkh:hover {background-color:#a42628;}'
     };
 
     function HoverHelper($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$f);
+    	append_styles$1($$anchor, $$css$g);
 
     	// Derived state for easier access
     	let target = user_derived(() => shareStore.currentHoverTarget);
@@ -12990,7 +13197,7 @@
 
     	{
     		var consequent_2 = ($$anchor) => {
-    			var div = root_1$9();
+    			var div = root_1$a();
     			var div_1 = child(div);
     			var span = child(div_1);
     			var text = child(span, true);
@@ -13001,7 +13208,7 @@
 
     			{
     				var consequent = ($$anchor) => {
-    					var span_1 = root_2$8();
+    					var span_1 = root_2$7();
     					var text_1 = child(span_1);
 
     					reset(span_1);
@@ -13028,7 +13235,7 @@
 
     			{
     				var consequent_1 = ($$anchor) => {
-    					var button_1 = root_3$3();
+    					var button_1 = root_3$5();
 
     					button_1.__click = handleSelectParent;
     					append($$anchor, button_1);
@@ -13065,18 +13272,18 @@
 
     delegate(['click']);
 
-    var root_2$7 = from_html(`<button type="button"></button>`);
-    var root_1$8 = from_html(`<div class="cv-color-swatches svelte-1r78n4c" role="none"></div>`);
+    var root_2$6 = from_html(`<button type="button"></button>`);
+    var root_1$9 = from_html(`<div class="cv-color-swatches svelte-1r78n4c" role="none"></div>`);
     var root$e = from_html(`<div class="cv-color-picker svelte-1r78n4c" role="none"><button type="button" class="cv-color-trigger svelte-1r78n4c" title="Choose highlight color" aria-label="Choose highlight color"><span class="cv-color-dot svelte-1r78n4c"></span></button> <!></div>`);
 
-    const $$css$e = {
+    const $$css$f = {
     	hash: 'svelte-1r78n4c',
     	code: '.cv-color-picker.svelte-1r78n4c {position:fixed;transform:translateX(-50%) translateY(-100%);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:auto;z-index:9500;\n    /* Nudge down so the trigger peeks above the element edge */margin-top:8px;}.cv-color-trigger.svelte-1r78n4c {width:22px;height:16px;border-radius:100px;border:1.5px solid rgba(0, 0, 0, 0.18);background:white;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:0 2px 8px rgba(0, 0, 0, 0.15);transition:box-shadow 0.15s;}.cv-color-trigger.svelte-1r78n4c:hover {box-shadow:0 3px 12px rgba(0, 0, 0, 0.22);}.cv-color-dot.svelte-1r78n4c {width:10px;height:10px;border-radius:50%;display:block;border:1px solid rgba(0, 0, 0, 0.12);}.cv-color-swatches.svelte-1r78n4c {display:flex;flex-direction:row;gap:4px;background:white;border-radius:100px;padding:4px 6px;box-shadow:0 4px 16px rgba(0, 0, 0, 0.18);border:1px solid rgba(0, 0, 0, 0.1);}.cv-color-swatch.svelte-1r78n4c {width:16px;height:16px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;transition:transform 0.1s, border-color 0.1s;}.cv-color-swatch.svelte-1r78n4c:hover {transform:scale(1.2);border-color:rgba(0, 0, 0, 0.3);}.cv-color-swatch.active.svelte-1r78n4c {border-color:rgba(0, 0, 0, 0.5);transform:scale(1.15);}'
     };
 
     function HighlightColorPicker($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$e);
+    	append_styles$1($$anchor, $$css$f);
 
     	let isExpanded = state(false);
     	let rect = state(proxy({ top: 0, left: 0, width: 0 }));
@@ -13150,10 +13357,10 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var div_1 = root_1$8();
+    			var div_1 = root_1$9();
 
     			each(div_1, 21, () => HIGHLIGHT_COLORS, index, ($$anchor, color) => {
-    				var button_1 = root_2$7();
+    				var button_1 = root_2$6();
     				let classes;
 
     				button_1.__click = (e) => handleSwatchClick(e, get(color).key);
@@ -13193,20 +13400,20 @@
 
     delegate(['click', 'dblclick']);
 
-    var root_1$7 = from_html(`<span class="cv-annotation-tab-preview svelte-1r1spmr"> </span>`);
-    var root_2$6 = from_html(`<span class="cv-annotation-tab-icon svelte-1r1spmr"> </span>`);
-    var root_4 = from_html(`<button type="button"> </button>`);
-    var root_3$2 = from_html(`<div class="cv-annotation-panel svelte-1r1spmr" role="none"><textarea class="cv-annotation-textarea svelte-1r1spmr" placeholder="Add a note…" rows="3"></textarea> <div class="cv-annotation-footer svelte-1r1spmr"><div class="cv-corner-selector svelte-1r1spmr" role="group" aria-label="Anchor corner"></div> <span class="cv-char-counter svelte-1r1spmr"> </span></div></div>`);
+    var root_1$8 = from_html(`<span class="cv-annotation-tab-preview svelte-1r1spmr"> </span>`);
+    var root_2$5 = from_html(`<span class="cv-annotation-tab-icon svelte-1r1spmr"> </span>`);
+    var root_4$2 = from_html(`<button type="button"> </button>`);
+    var root_3$4 = from_html(`<div class="cv-annotation-panel svelte-1r1spmr" role="none"><textarea class="cv-annotation-textarea svelte-1r1spmr" placeholder="Add a note…" rows="3"></textarea> <div class="cv-annotation-footer svelte-1r1spmr"><div class="cv-corner-selector svelte-1r1spmr" role="group" aria-label="Anchor corner"></div> <span class="cv-char-counter svelte-1r1spmr"> </span></div></div>`);
     var root$d = from_html(`<div class="cv-annotation-editor svelte-1r1spmr" role="none"><button type="button" aria-label="Annotation"><!></button> <!></div>`);
 
-    const $$css$d = {
+    const $$css$e = {
     	hash: 'svelte-1r1spmr',
     	code: '.cv-annotation-editor.svelte-1r1spmr {position:fixed;z-index:9400;pointer-events:auto;display:flex;flex-direction:column;align-items:flex-start;gap:2px;}.cv-annotation-tab.svelte-1r1spmr {height:20px;padding:0 8px;border-radius:100px;border:1.5px solid rgba(0, 0, 0, 0.18);background:white;cursor:pointer;display:flex;align-items:center;gap:4px;box-shadow:0 2px 8px rgba(0, 0, 0, 0.15);transition:box-shadow 0.15s;max-width:160px;overflow:hidden;}.cv-annotation-tab.svelte-1r1spmr:hover {box-shadow:0 3px 12px rgba(0, 0, 0, 0.22);}.cv-annotation-tab--has-text.svelte-1r1spmr {background:#fffbe6;border-color:rgba(180, 83, 9, 0.4);}.cv-annotation-tab-icon.svelte-1r1spmr {font-size:10px;line-height:1;color:#6b7280;}.cv-annotation-tab-preview.svelte-1r1spmr {font-size:9px;font-weight:600;color:#1a1a1a;font-family:ui-sans-serif, system-ui, sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;}.cv-annotation-panel.svelte-1r1spmr {background:white;border-radius:8px;border:1px solid rgba(0, 0, 0, 0.12);box-shadow:0 4px 16px rgba(0, 0, 0, 0.18);padding:8px;width:220px;display:flex;flex-direction:column;gap:6px;}.cv-annotation-textarea.svelte-1r1spmr {width:100%;box-sizing:border-box;resize:vertical;border:1px solid rgba(0, 0, 0, 0.15);border-radius:4px;padding:5px 7px;font-size:11px;font-family:ui-sans-serif, system-ui, sans-serif;color:#1a1a1a;line-height:1.5;outline:none;min-height:56px;}.cv-annotation-textarea.svelte-1r1spmr:focus {border-color:#b45309;box-shadow:0 0 0 2px rgba(180, 83, 9, 0.15);}.cv-annotation-footer.svelte-1r1spmr {display:flex;align-items:center;justify-content:space-between;}.cv-corner-selector.svelte-1r1spmr {display:flex;gap:2px;}.cv-corner-btn.svelte-1r1spmr {width:20px;height:20px;border-radius:4px;border:1px solid rgba(0, 0, 0, 0.12);background:white;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;color:#6b7280;padding:0;transition:background 0.1s, border-color 0.1s;}.cv-corner-btn.svelte-1r1spmr:hover {background:#fef3c7;border-color:#b45309;color:#1a1a1a;}.cv-corner-btn.active.svelte-1r1spmr {background:#fef3c7;border-color:#b45309;color:#92400e;font-weight:700;}.cv-char-counter.svelte-1r1spmr {font-size:9px;color:#9ca3af;font-family:ui-sans-serif, system-ui, sans-serif;font-variant-numeric:tabular-nums;}'
     };
 
     function HighlightAnnotationEditor($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$d);
+    	append_styles$1($$anchor, $$css$e);
 
     	let isExpanded = state(false);
     	let rect = state(proxy({ top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }));
@@ -13255,10 +13462,7 @@
 
     	function setCorner(c) {
     		set(localCorner, c, true);
-
-    		if (get(localText).trim().length > 0) {
-    			shareStore.setAnnotation($$props.element, get(localText), c);
-    		}
+    		shareStore.setAnnotation($$props.element, get(localText), c);
     	}
 
     	function handleTabClick(e) {
@@ -13296,7 +13500,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var span = root_1$7();
+    			var span = root_1$8();
     			var text = child(span, true);
 
     			reset(span);
@@ -13305,7 +13509,7 @@
     		};
 
     		var alternate = ($$anchor) => {
-    			var span_1 = root_2$6();
+    			var span_1 = root_2$5();
     			var text_1 = child(span_1, true);
 
     			reset(span_1);
@@ -13324,7 +13528,7 @@
 
     	{
     		var consequent_1 = ($$anchor) => {
-    			var div_1 = root_3$2();
+    			var div_1 = root_3$4();
     			var textarea = child(div_1);
 
     			remove_textarea_child(textarea);
@@ -13336,7 +13540,7 @@
     			each(div_3, 21, () => CORNER_ICONS, ({ key, icon }) => key, ($$anchor, $$item) => {
     				let key = () => get($$item).key;
     				let icon = () => get($$item).icon;
-    				var button_1 = root_4();
+    				var button_1 = root_4$2();
     				let classes_1;
 
     				button_1.__click = (e) => {
@@ -13397,18 +13601,18 @@
 
     delegate(['click', 'input']);
 
-    var root_2$5 = from_html(`<!> <!>`, 1);
-    var root_3$1 = from_html(`<div><span class="selection-label svelte-1dbf58w"> </span></div>`);
+    var root_2$4 = from_html(`<!> <!>`, 1);
+    var root_3$3 = from_html(`<div><span class="selection-label svelte-1dbf58w"> </span></div>`);
     var root$c = from_html(`<div class="share-overlay-ui"><!> <!> <!> <!></div>`);
 
-    const $$css$c = {
+    const $$css$d = {
     	hash: 'svelte-1dbf58w',
     	code: '\n  /* Global styles injected when active */body.cv-share-active {cursor:default;user-select:none;-webkit-user-select:none;}\n\n  /* Highlight outlines */.cv-highlight-target {outline:2px dashed #0078d4 !important;outline-offset:2px;cursor:crosshair;}.cv-share-selected {outline:3px solid #005a9e !important;outline-offset:2px;background-color:rgba(0, 120, 212, 0.05);}.cv-highlight-target-hide {outline:2px dashed #d13438 !important;outline-offset:2px;cursor:crosshair;}.cv-share-selected-hide {outline:3px solid #a4262c !important;outline-offset:2px;background-color:rgba(209, 52, 56, 0.05);}.cv-highlight-target-mode {outline:2px dashed #d97706 !important;outline-offset:2px;cursor:crosshair;}.cv-share-selected-highlight {outline:3px solid #b45309 !important;outline-offset:2px;background-color:rgba(245, 158, 11, 0.05);}.selection-box.svelte-1dbf58w {position:fixed;border:1px solid rgba(0, 120, 212, 0.4);background-color:rgba(0, 120, 212, 0.1);pointer-events:none;z-index:10000;box-sizing:border-box;}.selection-box.hide-mode.svelte-1dbf58w {border:1px solid rgba(209, 52, 56, 0.4);background-color:rgba(209, 52, 56, 0.1);}.selection-box.highlight-mode.svelte-1dbf58w {border:1px solid rgba(255, 140, 0, 0.6); /* Orange/Gold for highlight */background-color:rgba(255, 140, 0, 0.1);}.selection-label.svelte-1dbf58w {position:absolute;top:-24px;left:0;background:#0078d4;color:white;padding:2px 6px;font-size:11px;border-radius:3px;white-space:nowrap;font-family:sans-serif;opacity:0.9;}.hide-mode.svelte-1dbf58w .selection-label:where(.svelte-1dbf58w) {background:#d13438;}.highlight-mode.svelte-1dbf58w .selection-label:where(.svelte-1dbf58w) {background:#d97706; /* Darker orange for text bg */}'
     };
 
     function ShareOverlay($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$c);
+    	append_styles$1($$anchor, $$css$d);
 
     	let excludedTags = prop($$props, 'excludedTags', 19, () => ['HEADER', 'NAV', 'FOOTER']),
     		excludedIds = prop($$props, 'excludedIds', 19, () => []);
@@ -13662,7 +13866,7 @@
     			var node_4 = first_child(fragment);
 
     			each(node_4, 16, () => [...shareStore.selectedElements], (el) => el, ($$anchor, el) => {
-    				var fragment_1 = root_2$5();
+    				var fragment_1 = root_2$4();
     				var node_5 = first_child(fragment_1);
 
     				HighlightColorPicker(node_5, {
@@ -13694,7 +13898,7 @@
 
     	{
     		var consequent_1 = ($$anchor) => {
-    			var div_1 = root_3$1();
+    			var div_1 = root_3$3();
     			var span = child(div_1);
     			var text = child(span, true);
 
@@ -13731,16 +13935,16 @@
     	pop();
     }
 
-    var root_1$6 = from_html(`<div class="cv-focus-banner-wrapper svelte-1yqpn7e"><div id="cv-exit-focus-banner" data-cv-scroll-offset="" class="svelte-1yqpn7e"><span>You are viewing a 'focused view' generated by CustardUI.</span> <button type="button" class="svelte-1yqpn7e">See Original Page</button></div></div>`);
+    var root_1$7 = from_html(`<div class="cv-focus-banner-wrapper svelte-1yqpn7e"><div id="cv-exit-focus-banner" data-cv-scroll-offset="" class="svelte-1yqpn7e"><span>You are viewing a 'focused view' generated by CustardUI.</span> <button type="button" class="svelte-1yqpn7e">See Original Page</button></div></div>`);
 
-    const $$css$b = {
+    const $$css$c = {
     	hash: 'svelte-1yqpn7e',
     	code: '.cv-focus-banner-wrapper.svelte-1yqpn7e {position:fixed;top:0;left:0;right:0;z-index:9000;background-color:#f3cb52;box-shadow:0 2px 8px rgba(44, 26, 14, 0.15);font-family:system-ui, sans-serif;}#cv-exit-focus-banner.svelte-1yqpn7e {color:#2c1a0e;padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:16px;}button.svelte-1yqpn7e {background:#804b18;color:#fdf6e3;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:600;}button.svelte-1yqpn7e:hover {background:#c4853a;}'
     };
 
     function FocusBanner($$anchor, $$props) {
     	push($$props, false);
-    	append_styles$1($$anchor, $$css$b);
+    	append_styles$1($$anchor, $$css$c);
 
     	function handleExit() {
     		focusStore.exit();
@@ -13753,7 +13957,7 @@
 
     	{
     		var consequent = ($$anchor) => {
-    			var div = root_1$6();
+    			var div = root_1$7();
     			var div_1 = child(div);
     			var button = sibling(child(div_1), 2);
 
@@ -13999,14 +14203,14 @@
 
     var root$b = from_html(`<div class="cv-widget-root" data-cv-share-ignore=""><!> <!> <!> <!> <!> <!></div>`);
 
-    const $$css$a = {
+    const $$css$b = {
     	hash: 'svelte-1vlfixd',
     	code: '\n  /* Root should allow clicks to pass through to the page unless hitting checking/interactive element */.cv-widget-root {position:fixed;top:0;left:0;width:0;height:0;z-index:9999;pointer-events:none; /* Crucial: Allow clicks to pass through */\n\n    /* Light Theme Defaults */--cv-bg: white;--cv-text: rgba(0, 0, 0, 0.9);--cv-text-secondary: rgba(0, 0, 0, 0.6);--cv-border: rgba(0, 0, 0, 0.1);--cv-bg-hover: rgba(0, 0, 0, 0.05);--cv-primary: #3e84f4;--cv-primary-hover: #2563eb;--cv-danger: #dc2626;--cv-danger-bg: rgba(220, 38, 38, 0.1);--cv-shadow: rgba(0, 0, 0, 0.25);--cv-input-bg: white;--cv-input-border: rgba(0, 0, 0, 0.15);--cv-switch-bg: rgba(0, 0, 0, 0.1);--cv-switch-knob: white;--cv-modal-icon-bg: rgba(0, 0, 0, 0.08);--cv-icon-bg: rgba(255, 255, 255, 0.92);--cv-icon-color: rgba(0, 0, 0, 0.9);--cv-focus-ring: rgba(62, 132, 244, 0.2);--cv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);--cv-modal-radius: 0.75rem;--cv-card-radius: 0.5rem;--cv-section-label-transform: uppercase;font-family:inherit; /* Inherit font from host */}\n\n  /* But interactive children need pointer-events back */.cv-widget-root > * {pointer-events:auto;}\n\n  /* Exception: ShareOverlay manages its own pointer events */.cv-widget-root .cv-share-overlay {pointer-events:none; /* Overlay often passes clicks until specialized handles active */}.cv-widget-root[data-theme=\'dark\'] {\n    /* Dark Theme Overrides */--cv-bg: #101722;--cv-text: #e2e8f0;--cv-text-secondary: rgba(255, 255, 255, 0.6);--cv-border: rgba(255, 255, 255, 0.1);--cv-bg-hover: rgba(255, 255, 255, 0.05);--cv-primary: #3e84f4;--cv-primary-hover: #60a5fa;--cv-danger: #f87171;--cv-danger-bg: rgba(248, 113, 113, 0.1);--cv-shadow: rgba(0, 0, 0, 0.5);--cv-input-bg: #1e293b;--cv-input-border: rgba(255, 255, 255, 0.1);--cv-switch-bg: rgba(255, 255, 255, 0.1);--cv-switch-knob: #e2e8f0;--cv-modal-icon-bg: rgba(255, 255, 255, 0.08);--cv-icon-bg: #1e293b;--cv-icon-color: #e2e8f0;--cv-focus-ring: rgba(62, 132, 244, 0.5);--cv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);--cv-modal-radius: 0.75rem;--cv-card-radius: 0.5rem;--cv-section-label-transform: uppercase;}.cv-hidden {display:none !important;}'
     };
 
     function UIRoot($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$a);
+    	append_styles$1($$anchor, $$css$b);
 
     	const { persistenceManager, resetToDefault } = getContext(RUNTIME_CALLBACKS_CTX);
     	const iconSettingsStore = getContext(ICON_SETTINGS_CTX);
@@ -14418,7 +14622,8 @@
             const queryParamValue = url.searchParams.get(this.QUERY_PARAM);
             // 2. Handle ?adapt=clear
             if (queryParamValue === 'clear') {
-                this.clearStoredId(persistence);
+                persistence.clearAll(); // wipe custardUI-state and tab nav prefs
+                persistence.removeItem(STORAGE_KEY); // wipe the adaptation ID itself
                 if (this.hasHashAdaptationId(url.hash)) {
                     this.stripHashFromUrl(url);
                 }
@@ -14453,7 +14658,12 @@
                     this.stripQueryParamFromUrl(url);
                 }
             }
-            // 7. Persist namespace
+            // 7. Persist namespace — clear old state if explicitly switching to a different adaptation
+            const previousId = persistence.getItem(STORAGE_KEY);
+            const isExplicitUrlSwitch = queryParamValue !== null; // ?adapt= was in the URL
+            if (isExplicitUrlSwitch && previousId !== null && previousId !== id) {
+                persistence.clearAll(); // Remove custardUI-state so new adaptation starts fresh
+            }
             persistence.setItem(STORAGE_KEY, id);
             // 8. Apply theme synchronously (FOUC prevention)
             this.applyTheme(config);
@@ -14474,10 +14684,14 @@
         static rewriteUrlIndicator(adaptationId) {
             const url = new URL(window.location.href);
             const targetHash = this.getHashUrlIndicator(adaptationId);
-            if (url.hash === targetHash)
-                return;
-            if (url.hash === '') {
+            const hashCorrect = url.hash === targetHash;
+            const noStaleParam = !url.searchParams.has(this.QUERY_PARAM);
+            if (hashCorrect && noStaleParam)
+                return; // Already in correct state
+            if (url.hash === '' || url.hash === targetHash) {
+                // Hash is free — use #/id and remove any stale ?adapt= param
                 url.hash = targetHash;
+                url.searchParams.delete(this.QUERY_PARAM);
             }
             else {
                 // Hash is occupied (page anchor, #cv-open, etc.), use query param
@@ -14581,14 +14795,14 @@
 
     var root$a = from_html(`<div class="cv-context-divider svelte-1a535nn" role="button" tabindex="0"> </div>`);
 
-    const $$css$9 = {
+    const $$css$a = {
     	hash: 'svelte-1a535nn',
     	code: '.cv-context-divider.svelte-1a535nn {padding:12px;margin:16px 0;background-color:#f8f8f8;border-top:1px dashed #ccc;border-bottom:1px dashed #ccc;color:#555;text-align:center;cursor:pointer;font-family:system-ui, sans-serif;font-size:13px;transition:background-color 0.2s;}.cv-context-divider.svelte-1a535nn:hover {background-color:#e8e8e8;color:#333;}'
     };
 
     function FocusDivider($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$9);
+    	append_styles$1($$anchor, $$css$a);
 
     	// Component is mounted manually via `mount`, use props for communication.
     	let hiddenCount = prop($$props, 'hiddenCount', 3, 0);
@@ -14730,99 +14944,467 @@
         return groups;
     }
 
-    var root_1$5 = from_html(`<span class="cv-annotation-text svelte-1asb212"> </span>`);
-    var root_2$4 = from_html(`<span class="cv-annotation-text svelte-1asb212"> </span>`);
-    var root$9 = from_html(`<button type="button"><!></button>`);
+    var root_4$1 = from_html(`<span>▾</span>`);
+    var root_3$2 = from_html(`<!> <span class="cv-ribbon-text cv-ribbon-text--right svelte-1asb212"> </span> <span class="cv-ribbon-grip svelte-1asb212" aria-hidden="true"><span class="svelte-1asb212"></span><span class="svelte-1asb212"></span> <span class="svelte-1asb212"></span><span class="svelte-1asb212"></span> <span class="svelte-1asb212"></span><span class="svelte-1asb212"></span></span>`, 1);
+    var root_6$1 = from_html(`<span>▾</span>`);
+    var root_5$1 = from_html(`<span class="cv-ribbon-grip svelte-1asb212" aria-hidden="true"><span class="svelte-1asb212"></span><span class="svelte-1asb212"></span> <span class="svelte-1asb212"></span><span class="svelte-1asb212"></span> <span class="svelte-1asb212"></span><span class="svelte-1asb212"></span></span> <span class="cv-ribbon-text svelte-1asb212"> </span> <!>`, 1);
+    var root_1$6 = from_html(`<button type="button"><!></button>`);
+    var root_7$1 = from_html(`<div class="cv-annotation-card svelte-1asb212" role="region" aria-label="Annotation"><button type="button" class="cv-card-close svelte-1asb212" aria-label="Collapse annotation">✕</button> <span class="cv-card-text svelte-1asb212"> </span></div>`);
+    var root$9 = from_html(`<div><!></div>`);
 
-    const $$css$8 = {
+    const $$css$9 = {
     	hash: 'svelte-1asb212',
-    	code: '.cv-annotation-badge.svelte-1asb212 {position:absolute;z-index:10;pointer-events:auto;max-width:180px;background:white;border:1.5px solid var(--cv-highlight-color);border-radius:6px;padding:4px 7px;cursor:pointer;box-shadow:0 2px 8px rgba(44, 26, 14, 0.15);font-family:ui-sans-serif, system-ui, sans-serif;text-align:left;}.cv-annotation-badge--expanded.svelte-1asb212 {max-width:260px;z-index:20;}.cv-annotation-text.svelte-1asb212 {display:block;font-size:9px;font-weight:600;color:#1a1a1a;line-height:1.4;word-break:break-word;white-space:pre-wrap;}'
+    	code: '\n  /* ==============================\n     CONTAINER (position, drag, opacity)\n     ============================== */.cv-annotation-container.svelte-1asb212 {position:absolute;z-index:100;pointer-events:auto;touch-action:none;user-select:none;cursor:default;opacity:0.88;transition:opacity 0.2s ease, z-index 0s;}.cv-annotation-container.svelte-1asb212:hover {opacity:1;z-index:110;}\n\n  /* ==============================\n     RIBBON (home-plate)\n     ============================== */.cv-annotation-ribbon.svelte-1asb212 {border:none;padding:6px 20px 6px 8px;min-width:28px;min-height:24px;background:var(--cv-highlight-color);cursor:default;box-shadow:0 2px 8px rgba(0, 0, 0, 0.15);display:flex;align-items:center;justify-content:flex-start;gap:5px;transform-origin:center center;}.cv-annotation-ribbon--intro.svelte-1asb212 {\n    animation: svelte-1asb212-cv-wiggle-intro 0.75s ease-in-out forwards;}.cv-annotation-ribbon--periodic.svelte-1asb212 {\n    animation: svelte-1asb212-cv-wiggle-periodic 5s ease-in-out infinite;}.cv-annotation-ribbon--right.svelte-1asb212 {padding:6px 8px 6px 20px;justify-content:flex-end;}.cv-annotation-ribbon--empty.svelte-1asb212 {min-width:24px;padding:6px 16px 6px 8px;}.cv-annotation-ribbon--expandable.svelte-1asb212 {cursor:pointer;}.cv-annotation-ribbon--expandable.svelte-1asb212:hover {filter:brightness(1.1);}\n\n  /* ==============================\n     RIBBON TEXT (single line)\n     ============================== */.cv-ribbon-text.svelte-1asb212 {display:block;font-family:\'Segoe Print\', \'Bradley Hand\', \'Chilanka\', cursive;font-size:13px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;color:#fff;text-shadow:0 1px 3px rgba(0, 0, 0, 0.25);}.cv-ribbon-text--right.svelte-1asb212 {text-align:right;}.cv-ribbon-chevron.svelte-1asb212 {font-size:22px;opacity:1;flex-shrink:0;line-height:1;color:#fff;text-shadow:0 1px 4px rgba(0, 0, 0, 0.4);}.cv-ribbon-chevron--bounce.svelte-1asb212 {\n    animation: svelte-1asb212-cv-chevron-bounce 3s ease-in-out infinite;}\n\n  /* ==============================\n     DRAG GRIP (6-dot grid on flat side)\n     ============================== */.cv-ribbon-grip.svelte-1asb212 {display:grid;grid-template-columns:repeat(2, 3px);gap:3px;flex-shrink:0;opacity:0.7;cursor:grab;padding:2px;}.cv-ribbon-grip.svelte-1asb212:active {cursor:grabbing;}.cv-ribbon-grip.svelte-1asb212 > span:where(.svelte-1asb212) {width:3px;height:3px;border-radius:50%;background:rgba(255, 255, 255, 0.9);box-shadow:0 0 1px rgba(0, 0, 0, 0.4);}\n\n  /* ==============================\n     CARD (sticky note)\n     ============================== */.cv-annotation-card.svelte-1asb212 {background:#FFFDF5;border:1.5px solid var(--cv-highlight-color);border-radius:4px;padding:10px 12px;max-width:280px;min-width:120px;box-shadow:0 4px 20px rgba(0, 0, 0, 0.18);position:relative;\n    animation: svelte-1asb212-cv-cardPop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;}.cv-card-close.svelte-1asb212 {position:absolute;top:3px;right:5px;border:none;background:transparent;cursor:pointer;font-size:12px;color:#aaa;padding:2px 4px;line-height:1;font-family:sans-serif;}.cv-card-close.svelte-1asb212:hover {color:#555;}.cv-card-text.svelte-1asb212 {display:block;font-family:\'Segoe Print\', \'Bradley Hand\', \'Chilanka\', cursive;font-size:13px;font-weight:600;color:#333;line-height:1.45;word-break:break-word;white-space:pre-wrap;padding-right:15px;}\n\n  /* ==============================\n     ANIMATIONS\n     ============================== */\n  @keyframes svelte-1asb212-cv-wiggle-intro {\n    0%   { transform: rotate(0deg); }\n    10%  { transform: rotate(-6deg); }\n    25%  { transform: rotate(6deg); }\n    40%  { transform: rotate(-5deg); }\n    55%  { transform: rotate(5deg); }\n    68%  { transform: rotate(-3deg); }\n    80%  { transform: rotate(2.5deg); }\n    90%  { transform: rotate(-1deg); }\n    100% { transform: rotate(0deg); }\n  }\n\n  @keyframes svelte-1asb212-cv-wiggle-periodic {\n    0%, 85%, 100% { transform: rotate(0deg); }\n    87% { transform: rotate(1.2deg); }\n    90% { transform: rotate(-1.2deg); }\n    93% { transform: rotate(0.8deg); }\n    96% { transform: rotate(-0.5deg); }\n  }\n\n  @keyframes svelte-1asb212-cv-cardPop {\n    from { opacity: 0; transform: scale(0.9) translateY(5px); }\n    to { opacity: 1; transform: scale(1) translateY(0); }\n  }\n\n  @keyframes svelte-1asb212-cv-chevron-bounce {\n    0%, 70%, 100% { transform: translateY(0); }\n    78%           { transform: translateY(-3px); }\n    86%           { transform: translateY(1px); }\n    93%           { transform: translateY(-1.5px); }\n  }'
     };
 
     function HighlightTextAnnotation($$anchor, $$props) {
     	push($$props, true);
-    	append_styles$1($$anchor, $$css$8);
+    	append_styles$1($$anchor, $$css$9);
 
+    	const corner = user_derived(() => $$props.annotationCorner ?? DEFAULT_ANNOTATION_CORNER);
+    	const hasText = user_derived(() => $$props.annotation.length > 0);
+    	const isShort = user_derived(() => $$props.annotation.length <= ANNOTATION_PREVIEW_LENGTH);
+    	const isRightCorner = user_derived(() => get(corner) === 'tr' || get(corner) === 'br');
     	let expanded = state(false);
 
+    	// --- Intro wiggle state ---
+    	let introAnimationDone = state(false);
+
+    	function onIntroAnimationEnd(e) {
+    		if (e.target !== e.currentTarget) return;
+
+    		set(introAnimationDone, true);
+    	}
+
+    	// --- Drag-to-move state ---
+    	let dragOffsetX = state(0);
+
+    	let dragOffsetY = state(0);
+    	let isDragging = false;
+    	let isPointerDown = false;
+    	let dragStartX = 0;
+    	let dragStartY = 0;
+    	let dragStartOffsetX = 0;
+    	let dragStartOffsetY = 0;
+    	let containerEl;
+
     	function toggle() {
+    		if (get(isShort)) return;
+
     		set(expanded, !get(expanded));
     	}
 
-    	function getBadgeStyle(corner) {
-    		switch (corner) {
+    	function handleInteraction(e) {
+    		e.stopPropagation();
+
+    		if (!isDragging) toggle();
+    	}
+
+    	function onPointerDown(e) {
+    		// Only initiate drag when the pointer starts on the grip handle.
+    		if (!e.target.closest('.cv-ribbon-grip')) return;
+
+    		isPointerDown = true;
+    		isDragging = false;
+    		dragStartX = e.clientX;
+    		dragStartY = e.clientY;
+    		dragStartOffsetX = get(dragOffsetX);
+    		dragStartOffsetY = get(dragOffsetY);
+    	}
+
+    	// Hard clamp so the element can never leave the viewport.
+    	function clampToViewport(newX, newY) {
+    		if (!containerEl) return { x: newX, y: newY };
+
+    		const rect = containerEl.getBoundingClientRect();
+    		const pad = 8;
+    		const vw = window.innerWidth;
+    		const vh = window.innerHeight;
+    		const origLeft = rect.left - get(dragOffsetX);
+    		const origTop = rect.top - get(dragOffsetY);
+    		const newLeft = origLeft + newX;
+    		const newTop = origTop + newY;
+    		let x = newX;
+    		let y = newY;
+
+    		if (newLeft < pad) x += pad - newLeft;
+    		if (newLeft + rect.width > vw - pad) x -= newLeft + rect.width - (vw - pad);
+    		if (newTop < pad) y += pad - newTop;
+    		if (newTop + rect.height > vh - pad) y -= newTop + rect.height - (vh - pad);
+
+    		return { x, y };
+    	}
+
+    	function onPointerMove(e) {
+    		if (!isPointerDown) return;
+
+    		const dx = e.clientX - dragStartX;
+    		const dy = e.clientY - dragStartY;
+
+    		if (!isDragging && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+    			isDragging = true;
+    			e.currentTarget.setPointerCapture(e.pointerId);
+    		}
+
+    		if (isDragging) {
+    			const rawX = dragStartOffsetX + dx;
+    			const rawY = dragStartOffsetY + dy;
+    			const clamped = clampToViewport(rawX, rawY);
+
+    			set(dragOffsetX, clamped.x, true);
+    			set(dragOffsetY, clamped.y, true);
+    		}
+    	}
+
+    	function onPointerUp(e) {
+    		if (!isPointerDown) return;
+
+    		isPointerDown = false;
+
+    		if (isDragging) {
+    			e.currentTarget.releasePointerCapture(e.pointerId);
+
+    			setTimeout(
+    				() => {
+    					isDragging = false;
+    				},
+    				50
+    			);
+    		}
+    	}
+
+    	// Cancel (e.g. touch interrupted by scroll) — reset all drag state cleanly.
+    	function onPointerCancel(_e) {
+    		isPointerDown = false;
+    		isDragging = false;
+    	}
+
+    	// Nudge annotation back in-bounds when the viewport shrinks.
+    	user_effect(() => {
+    		function onResize() {
+    			const clamped = clampToViewport(get(dragOffsetX), get(dragOffsetY));
+
+    			set(dragOffsetX, clamped.x, true);
+    			set(dragOffsetY, clamped.y, true);
+    		}
+
+    		window.addEventListener('resize', onResize);
+
+    		return () => window.removeEventListener('resize', onResize);
+    	});
+
+    	/**
+    	 * Returns CSS positioning based on the annotation corner.
+    	 */
+    	function getPositionStyle(c) {
+    		switch (c) {
     			case 'tr':
-    				return 'top: 6px; right: 6px;';
+    				return 'top: -6px; right: -6px;';
 
     			case 'bl':
-    				return 'bottom: 6px; left: 6px;';
+    				return 'bottom: -6px; left: -6px;';
 
     			case 'br':
-    				return 'bottom: 6px; right: 6px;';
+    				return 'bottom: -6px; right: -6px;';
 
     			case 'tl':
 
     			default:
-    				return 'top: 6px; left: 6px;';
+    				return 'top: -6px; left: -6px;';
     		}
     	}
 
-    	var button = root$9();
+    	/**
+    	 * Returns the ribbon clip-path. The point faces inward toward the content.
+    	 */
+    	function getRibbonClipPath(c) {
+    		const pointsRight = c === 'tl' || c === 'bl';
+
+    		if (pointsRight) {
+    			return 'polygon(0% 0%, 80% 0%, 100% 50%, 80% 100%, 0% 100%)';
+    		} else {
+    			return 'polygon(20% 0%, 100% 0%, 100% 100%, 20% 100%, 0% 50%)';
+    		}
+    	}
+
+    	var div = root$9();
     	let classes;
 
-    	button.__click = (e) => {
-    		e.stopPropagation();
-    		toggle();
-    	};
+    	div.__pointerdown = onPointerDown;
+    	div.__pointermove = onPointerMove;
+    	div.__pointerup = onPointerUp;
 
-    	var node = child(button);
+    	var node = child(div);
 
     	{
-    		var consequent = ($$anchor) => {
-    			var span = root_1$5();
-    			var text = child(span, true);
+    		var consequent_4 = ($$anchor) => {
+    			var button = root_1$6();
+    			let classes_1;
 
-    			reset(span);
-    			template_effect(() => set_text(text, $$props.annotation));
-    			append($$anchor, span);
+    			button.__click = handleInteraction;
+
+    			var node_1 = child(button);
+
+    			{
+    				var consequent_3 = ($$anchor) => {
+    					var fragment = comment();
+    					var node_2 = first_child(fragment);
+
+    					{
+    						var consequent_1 = ($$anchor) => {
+    							var fragment_1 = root_3$2();
+    							var node_3 = first_child(fragment_1);
+
+    							{
+    								var consequent = ($$anchor) => {
+    									var span = root_4$1();
+    									let classes_2;
+
+    									template_effect(() => classes_2 = set_class(span, 1, 'cv-ribbon-chevron svelte-1asb212', null, classes_2, { 'cv-ribbon-chevron--bounce': get(introAnimationDone) }));
+    									append($$anchor, span);
+    								};
+
+    								if_block(node_3, ($$render) => {
+    									if (!get(isShort)) $$render(consequent);
+    								});
+    							}
+
+    							var span_1 = sibling(node_3, 2);
+    							var text = child(span_1, true);
+
+    							reset(span_1);
+    							next(2);
+
+    							template_effect(($0) => set_text(text, $0), [
+    								() => get(isShort)
+    									? $$props.annotation
+    									: $$props.annotation.slice(0, ANNOTATION_PREVIEW_LENGTH) + '…'
+    							]);
+
+    							append($$anchor, fragment_1);
+    						};
+
+    						var alternate = ($$anchor) => {
+    							var fragment_2 = root_5$1();
+    							var span_2 = sibling(first_child(fragment_2), 2);
+    							var text_1 = child(span_2, true);
+
+    							reset(span_2);
+
+    							var node_4 = sibling(span_2, 2);
+
+    							{
+    								var consequent_2 = ($$anchor) => {
+    									var span_3 = root_6$1();
+    									let classes_3;
+
+    									template_effect(() => classes_3 = set_class(span_3, 1, 'cv-ribbon-chevron svelte-1asb212', null, classes_3, { 'cv-ribbon-chevron--bounce': get(introAnimationDone) }));
+    									append($$anchor, span_3);
+    								};
+
+    								if_block(node_4, ($$render) => {
+    									if (!get(isShort)) $$render(consequent_2);
+    								});
+    							}
+
+    							template_effect(($0) => set_text(text_1, $0), [
+    								() => get(isShort)
+    									? $$props.annotation
+    									: $$props.annotation.slice(0, ANNOTATION_PREVIEW_LENGTH) + '…'
+    							]);
+
+    							append($$anchor, fragment_2);
+    						};
+
+    						if_block(node_2, ($$render) => {
+    							if (get(isRightCorner)) $$render(consequent_1); else $$render(alternate, false);
+    						});
+    					}
+
+    					append($$anchor, fragment);
+    				};
+
+    				if_block(node_1, ($$render) => {
+    					if (get(hasText)) $$render(consequent_3);
+    				});
+    			}
+
+    			reset(button);
+
+    			template_effect(
+    				($0) => {
+    					classes_1 = set_class(button, 1, 'cv-annotation-ribbon svelte-1asb212', null, classes_1, {
+    						'cv-annotation-ribbon--empty': !get(hasText),
+    						'cv-annotation-ribbon--right': get(isRightCorner),
+    						'cv-annotation-ribbon--expandable': !get(isShort),
+    						'cv-annotation-ribbon--intro': !get(introAnimationDone),
+    						'cv-annotation-ribbon--periodic': get(introAnimationDone)
+    					});
+
+    					set_style(button, `clip-path: ${$0 ?? ''};`);
+
+    					set_attribute(button, 'aria-label', get(hasText)
+    						? get(isShort) ? $$props.annotation : 'Expand annotation'
+    						: 'Annotation marker');
+
+    					set_attribute(button, 'aria-expanded', get(isShort) ? undefined : get(expanded));
+    				},
+    				[() => getRibbonClipPath(get(corner))]
+    			);
+
+    			event('animationend', button, onIntroAnimationEnd);
+    			append($$anchor, button);
     		};
 
-    		var alternate = ($$anchor) => {
-    			var span_1 = root_2$4();
-    			var text_1 = child(span_1, true);
+    		var alternate_1 = ($$anchor) => {
+    			var div_1 = root_7$1();
+    			var button_1 = child(div_1);
 
-    			reset(span_1);
+    			button_1.__click = handleInteraction;
 
-    			template_effect(($0) => set_text(text_1, $0), [
-    				() => $$props.annotation.length > ANNOTATION_PREVIEW_LENGTH
-    					? $$props.annotation.slice(0, ANNOTATION_PREVIEW_LENGTH) + '…'
-    					: $$props.annotation
-    			]);
+    			var span_4 = sibling(button_1, 2);
+    			var text_2 = child(span_4, true);
 
-    			append($$anchor, span_1);
+    			reset(span_4);
+    			reset(div_1);
+    			template_effect(() => set_text(text_2, $$props.annotation));
+    			append($$anchor, div_1);
     		};
 
     		if_block(node, ($$render) => {
-    			if (get(expanded)) $$render(consequent); else $$render(alternate, false);
+    			if (!get(expanded)) $$render(consequent_4); else $$render(alternate_1, false);
     		});
     	}
 
-    	reset(button);
+    	reset(div);
+    	bind_this(div, ($$value) => containerEl = $$value, () => containerEl);
 
     	template_effect(
     		($0) => {
-    			classes = set_class(button, 1, 'cv-annotation-badge svelte-1asb212', null, classes, { 'cv-annotation-badge--expanded': get(expanded) });
-    			set_style(button, $0);
-    			set_attribute(button, 'aria-label', get(expanded) ? 'Collapse annotation' : 'Expand annotation');
-    			set_attribute(button, 'aria-expanded', get(expanded));
+    			classes = set_class(div, 1, 'cv-annotation-container svelte-1asb212', null, classes, { 'cv-annotation-container--expanded': get(expanded) });
+    			set_style(div, `${$0 ?? ''} transform: translate(${get(dragOffsetX) ?? ''}px, ${get(dragOffsetY) ?? ''}px);`);
     		},
-    		[
-    			() => getBadgeStyle($$props.annotationCorner ?? DEFAULT_ANNOTATION_CORNER)
-    		]
+    		[() => getPositionStyle(get(corner))]
     	);
 
-    	append($$anchor, button);
+    	event('pointercancel', div, onPointerCancel);
+    	append($$anchor, div);
     	pop();
+    }
+
+    delegate(['pointerdown', 'pointermove', 'pointerup', 'click']);
+
+    var root_1$5 = from_html(`<div class="cv-annotation-container svelte-ii1txw"><div role="img" aria-label="Annotation marker"></div> <button type="button" class="cv-empty-dismiss svelte-ii1txw" aria-label="Dismiss marker">✕</button></div>`);
+
+    const $$css$8 = {
+    	hash: 'svelte-ii1txw',
+    	code: '.cv-annotation-container.svelte-ii1txw {position:absolute;z-index:100;pointer-events:auto;touch-action:none;user-select:none;opacity:0.95;transition:opacity 0.2s ease, z-index 0s;}.cv-annotation-container.svelte-ii1txw:hover {opacity:1;z-index:110;}.cv-empty-ribbon.svelte-ii1txw {min-width:45px;min-height:22px;background:var(--cv-highlight-color);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.22);transform-origin:center center;padding:5px 22px 5px 10px;opacity:0.95;transition:opacity 0.2s ease;}.cv-annotation-container.svelte-ii1txw:hover .cv-empty-ribbon:where(.svelte-ii1txw) {opacity:1;}.cv-empty-ribbon--right.svelte-ii1txw {padding:5px 10px 5px 22px;}.cv-empty-ribbon--intro.svelte-ii1txw {\n    animation: svelte-ii1txw-cv-wiggle-intro 0.75s ease-in-out forwards;}.cv-empty-ribbon--periodic.svelte-ii1txw {\n    animation: svelte-ii1txw-cv-wiggle-periodic 5s ease-in-out infinite;}\n\n  /* Dismiss button — hidden until container is hovered */.cv-empty-dismiss.svelte-ii1txw {position:absolute;border:none;background:rgba(100, 100, 100, 0.55);color:#fff;font-size:8px;cursor:pointer;width:14px;height:14px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;border-radius:50%;box-shadow:0 1px 4px rgba(0, 0, 0, 0.2);opacity:0;pointer-events:none;transition:opacity 0.15s ease, background 0.15s ease, color 0.15s ease;}.cv-annotation-container.svelte-ii1txw:hover .cv-empty-dismiss:where(.svelte-ii1txw) {opacity:1;pointer-events:auto;}.cv-empty-dismiss.svelte-ii1txw:hover {background:rgba(80, 80, 80, 0.8);box-shadow:0 1px 6px rgba(0, 0, 0, 0.28);}\n\n  @keyframes svelte-ii1txw-cv-wiggle-intro {\n    0%   { transform: rotate(0deg); }\n    10%  { transform: rotate(-6deg); }\n    25%  { transform: rotate(6deg); }\n    40%  { transform: rotate(-5deg); }\n    55%  { transform: rotate(5deg); }\n    68%  { transform: rotate(-3deg); }\n    80%  { transform: rotate(2.5deg); }\n    90%  { transform: rotate(-1deg); }\n    100% { transform: rotate(0deg); }\n  }\n\n  @keyframes svelte-ii1txw-cv-wiggle-periodic {\n    0%, 85%, 100% { transform: rotate(0deg); }\n    87% { transform: rotate(1.2deg); }\n    90% { transform: rotate(-1.2deg); }\n    93% { transform: rotate(0.8deg); }\n    96% { transform: rotate(-0.5deg); }\n  }'
+    };
+
+    function HighlightEmptyAnnotation($$anchor, $$props) {
+    	append_styles$1($$anchor, $$css$8);
+
+    	const corner = user_derived(() => $$props.annotationCorner ?? DEFAULT_ANNOTATION_CORNER);
+    	const isRightCorner = user_derived(() => get(corner) === 'tr' || get(corner) === 'br');
+    	let dismissed = state(false);
+    	let introAnimationDone = state(false);
+
+    	function onIntroAnimationEnd(e) {
+    		if (e.target !== e.currentTarget) return;
+
+    		set(introAnimationDone, true);
+    	}
+
+    	function getPositionStyle(c) {
+    		switch (c) {
+    			case 'tr':
+    				return 'top: 4px; right: -6px;';
+
+    			case 'bl':
+    				return 'bottom: 4px; left: -6px;';
+
+    			case 'br':
+    				return 'bottom: 4px; right: -6px;';
+
+    			case 'tl':
+
+    			default:
+    				return 'top: 4px; left: -6px;';
+    		}
+    	}
+
+    	function getRibbonClipPath(c) {
+    		const pointsRight = c === 'tl' || c === 'bl';
+
+    		if (pointsRight) {
+    			return 'polygon(0% 0%, 80% 0%, 100% 50%, 80% 100%, 0% 100%)';
+    		} else {
+    			return 'polygon(20% 0%, 100% 0%, 100% 100%, 20% 100%, 0% 50%)';
+    		}
+    	}
+
+    	// Position the dismiss button at the outermost corner of the container (furthest from the box).
+    	function getDismissStyle(c) {
+    		switch (c) {
+    			case 'tr':
+    				return 'top: -5px; right: -5px;';
+
+    			case 'bl':
+    				return 'bottom: -5px; left: -5px;';
+
+    			case 'br':
+    				return 'bottom: -5px; right: -5px;';
+
+    			case 'tl':
+
+    			default:
+    				return 'top: -5px; left: -5px;';
+    		}
+    	}
+
+    	var fragment = comment();
+    	var node = first_child(fragment);
+
+    	{
+    		var consequent = ($$anchor) => {
+    			var div = root_1$5();
+    			var div_1 = child(div);
+    			let classes;
+    			var button = sibling(div_1, 2);
+
+    			button.__click = () => set(dismissed, true);
+    			reset(div);
+
+    			template_effect(
+    				($0, $1, $2) => {
+    					set_style(div, $0);
+
+    					classes = set_class(div_1, 1, 'cv-empty-ribbon svelte-ii1txw', null, classes, {
+    						'cv-empty-ribbon--right': get(isRightCorner),
+    						'cv-empty-ribbon--intro': !get(introAnimationDone),
+    						'cv-empty-ribbon--periodic': get(introAnimationDone)
+    					});
+
+    					set_style(div_1, `clip-path: ${$1 ?? ''};`);
+    					set_style(button, $2);
+    				},
+    				[
+    					() => getPositionStyle(get(corner)),
+    					() => getRibbonClipPath(get(corner)),
+    					() => getDismissStyle(get(corner))
+    				]
+    			);
+
+    			event('animationend', div_1, onIntroAnimationEnd);
+    			append($$anchor, div);
+    		};
+
+    		if_block(node, ($$render) => {
+    			if (!get(dismissed)) $$render(consequent);
+    		});
+    	}
+
+    	append($$anchor, fragment);
     }
 
     delegate(['click']);
@@ -14899,8 +15481,16 @@
     				});
     			};
 
+    			var alternate = ($$anchor) => {
+    				HighlightEmptyAnnotation($$anchor, {
+    					get annotationCorner() {
+    						return get(rect).annotationCorner;
+    					}
+    				});
+    			};
+
     			if_block(node_1, ($$render) => {
-    				if (get(rect).annotation) $$render(consequent_1);
+    				if (get(rect).annotation !== undefined && get(rect).annotation.length > 0) $$render(consequent_1); else $$render(alternate, false);
     			});
     		}
 
@@ -15030,7 +15620,8 @@
             rect.color = color;
         const annotation = annotationMap?.get(elements[0]);
         if (annotation !== undefined) {
-            rect.annotation = annotation.text;
+            if (annotation.text.length > 0)
+                rect.annotation = annotation.text;
             rect.annotationCorner = annotation.corner;
         }
         resultList.push(rect);
@@ -15108,8 +15699,11 @@
     					matchingEls.forEach((el) => colors.set(el, desc.color));
     				}
 
-    				if (desc.annotation && desc.annotationCorner) {
-    					matchingEls.forEach((el) => annotations.set(el, { text: desc.annotation, corner: desc.annotationCorner }));
+    				if (desc.annotation || desc.annotationCorner) {
+    					matchingEls.forEach((el) => annotations.set(el, {
+    						text: desc.annotation ?? '',
+    						corner: desc.annotationCorner ?? DEFAULT_ANNOTATION_CORNER
+    					}));
     				}
     			}
     		});
@@ -16336,13 +16930,20 @@
         }
     }
 
-    var root_1$3 = from_html(`<div class="cv-toggle-label svelte-1ka2eec"> </div>`);
-    var root_2$2 = from_html(`<button type="button" class="cv-expand-btn svelte-1ka2eec"><!></button>`);
-    var root$5 = from_html(`<div><!> <div class="cv-toggle-content svelte-1ka2eec"><div class="cv-toggle-inner svelte-1ka2eec"><!></div></div> <!></div>`);
+    var root_2$2 = from_html(`<span class="cv-placeholder-label svelte-1ka2eec"> </span>`);
+    var root_3$1 = from_html(`<button type="button"></button>`);
+    var root_1$3 = from_html(`<div class="cv-toggle-placeholder svelte-1ka2eec" role="group"><!> <div class="cv-state-dots svelte-1ka2eec" role="group" aria-label="Visibility states"></div></div>`);
+    var root_4 = from_html(`<div class="cv-toggle-label svelte-1ka2eec"> </div>`);
+    var root_6 = from_html(`<button type="button"></button>`);
+    var root_5 = from_html(`<div class="cv-state-dots cv-state-dots--floating svelte-1ka2eec" role="group" aria-label="Visibility states"></div>`);
+    var root_8 = from_html(`<!> <span class="cv-expand-label svelte-1ka2eec">Show less</span>`, 1);
+    var root_9 = from_html(`<!> <span class="cv-expand-label svelte-1ka2eec">Show more</span>`, 1);
+    var root_7 = from_html(`<button type="button" class="cv-expand-btn svelte-1ka2eec"><!></button>`);
+    var root$5 = from_html(`<!> <div><!> <!> <div class="cv-toggle-content svelte-1ka2eec"><div class="cv-toggle-inner svelte-1ka2eec"><!></div></div> <!></div>`, 1);
 
     const $$css$6 = {
     	hash: 'svelte-1ka2eec',
-    	code: ':host {display:block;position:relative;z-index:1;overflow:visible;}\n\n  /* Host visibility control */:host([hidden]) {display:none;}.cv-toggle-wrapper.svelte-1ka2eec {position:relative;width:100%;transition:all 0.3s ease;margin-bottom:4px;}.cv-toggle-wrapper.hidden.svelte-1ka2eec {margin-bottom:0;}.cv-toggle-wrapper.peek-mode.svelte-1ka2eec {margin-bottom:24px;}.cv-toggle-content.svelte-1ka2eec {overflow:hidden;transition:max-height 0.3s ease,\n      opacity 0.3s ease,\n      overflow 0s 0s;\n    /* CSS max-height defaults are handled by inline styles now */}.cv-toggle-inner.svelte-1ka2eec {display:flow-root; /* Ensures margins of children are contained */}\n\n  /* Hidden State */.hidden.svelte-1ka2eec .cv-toggle-content:where(.svelte-1ka2eec) {opacity:0;pointer-events:none;}\n\n  /* Bordered State */.has-border.svelte-1ka2eec {box-sizing:border-box; /* Ensure padding/border doesn\'t increase width */\n\n    /* Dashed border */border:2px dashed rgba(0, 0, 0, 0.15);border-bottom:none;\n\n    /* Inner shadow to look like it\'s going into something + outer shadow */box-shadow:0 2px 8px rgba(0, 0, 0, 0.05),\n      /* Subtle outer */ inset 0 -15px 10px -10px rgba(0, 0, 0, 0.1); /* Inner bottom shadow */border-radius:8px 8px 0 0;padding:12px 0 0 0; /* bottom 0 px until expanded */margin-top:4px;}\n\n  /* Visible / Expanded State */.expanded.svelte-1ka2eec .cv-toggle-content:where(.svelte-1ka2eec) {opacity:1;transform:translateY(0);overflow:visible;transition:max-height 0.3s ease,\n      opacity 0.3s ease,\n      overflow 0s 0.3s;}\n\n  /* When expanded, complete the border */.has-border.expanded.svelte-1ka2eec {border-bottom:2px dashed rgba(0, 0, 0, 0.15);border-radius:8px; /* Round all corners */padding-bottom:12px;box-shadow:0 2px 8px rgba(0, 0, 0, 0.05); /* Remove inner shadow when expanded */}\n\n  /* Peek State */.peeking.svelte-1ka2eec .cv-toggle-content:where(.svelte-1ka2eec) {opacity:1;\n    /* Mask for fade out effect */mask-image:linear-gradient(to bottom, black 50%, transparent 100%);-webkit-mask-image:linear-gradient(to bottom, black 50%, transparent 100%);}\n\n  /* Label Style */.cv-toggle-label.svelte-1ka2eec {position:absolute;top:-12px;left:0;background:#e0e0e0;color:#333;font-size:0.75rem;font-weight:600;padding:2px 8px;border-radius:4px;z-index:10;pointer-events:auto;box-shadow:0 1px 2px rgba(0, 0, 0, 0.1);}\n\n  /* Adjust label position if bordered */.has-border.svelte-1ka2eec .cv-toggle-label:where(.svelte-1ka2eec) {top:-10px;left:0;}\n\n  /* Expand Button */.cv-expand-btn.svelte-1ka2eec {position:absolute;bottom:-24px;left:50%;transform:translateX(-50%);display:flex;background:transparent;border:none;border-radius:50%;padding:4px;width:32px;height:32px;cursor:pointer;z-index:100;align-items:center;justify-content:center;color:#888;transition:all 0.2s ease;}.cv-expand-btn.svelte-1ka2eec:hover {background:rgba(0, 0, 0, 0.05);color:#000;transform:translateX(-50%) scale(1.1);}\n\n  /* Accessing SVG inside button - might need :global if SVG is injected as HTML or just plain styles since it adheres to current scope */.cv-expand-btn.svelte-1ka2eec svg {display:block;opacity:0.6;width:24px;height:24px;transition:opacity 0.2s;}.cv-expand-btn.svelte-1ka2eec:hover svg {opacity:1;}'
+    	code: ':host {display:block;position:relative;z-index:1;overflow:visible;}\n\n  /* Host visibility control */:host([hidden]) {display:none;}.cv-toggle-wrapper.svelte-1ka2eec {position:relative;width:100%;transition:all 0.35s cubic-bezier(0.4, 0, 0.2, 1);margin-bottom:4px;}.cv-toggle-wrapper.hidden.svelte-1ka2eec {margin-bottom:0;}.cv-toggle-wrapper.peek-mode.svelte-1ka2eec {margin-bottom:28px;}.cv-toggle-content.svelte-1ka2eec {overflow:hidden;transition:max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),\n      opacity 0.3s ease,\n      overflow 0s 0s;}.cv-toggle-inner.svelte-1ka2eec {display:flow-root; /* Ensures margins of children are contained */}\n\n  /* Hidden State */.hidden.svelte-1ka2eec .cv-toggle-content:where(.svelte-1ka2eec) {opacity:0;pointer-events:none;}\n\n  /* Bordered State */.has-border.svelte-1ka2eec {box-sizing:border-box;border:2px dashed rgba(0, 0, 0, 0.15);border-bottom:none;box-shadow:0 2px 8px rgba(0, 0, 0, 0.05),\n      inset 0 -15px 10px -10px rgba(0, 0, 0, 0.1);border-radius:8px 8px 0 0;padding:12px 0 0 0;margin-top:4px;}\n\n  /* Visible / Expanded State */.expanded.svelte-1ka2eec .cv-toggle-content:where(.svelte-1ka2eec) {opacity:1;transform:translateY(0);overflow:visible;transition:max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),\n      opacity 0.3s ease,\n      overflow 0s 0.35s;}\n\n  /* When expanded, complete the border */.has-border.expanded.svelte-1ka2eec {border-bottom:2px dashed rgba(0, 0, 0, 0.15);border-radius:8px;padding-bottom:12px;box-shadow:0 2px 8px rgba(0, 0, 0, 0.05);}\n\n  /* Peek State — smoother gradient */.peeking.svelte-1ka2eec .cv-toggle-content:where(.svelte-1ka2eec) {opacity:1;mask-image:linear-gradient(to bottom, black 30%, rgba(0,0,0,0.5) 70%, transparent 100%);-webkit-mask-image:linear-gradient(to bottom, black 30%, rgba(0,0,0,0.5) 70%, transparent 100%);}\n\n  /* Label Style */.cv-toggle-label.svelte-1ka2eec {position:absolute;top:-12px;left:0;background:#e0e0e0;color:#333;font-size:0.75rem;font-weight:600;padding:2px 8px;border-radius:4px;z-index:10;pointer-events:auto;box-shadow:0 1px 2px rgba(0, 0, 0, 0.1);}\n\n  /* Adjust label position if bordered */.has-border.svelte-1ka2eec .cv-toggle-label:where(.svelte-1ka2eec) {top:-10px;left:0;}\n\n  /* Hidden-state placeholder bar */.cv-toggle-placeholder.svelte-1ka2eec {display:flex;align-items:center;justify-content:space-between;padding:4px 8px;min-height:24px;border:1px solid rgba(0, 0, 0, 0.06);border-radius:6px;background:rgba(0, 0, 0, 0.015);margin-bottom:4px;transition:border-color 0.2s ease, background 0.2s ease;}.cv-toggle-placeholder.svelte-1ka2eec:hover {border-color:rgba(0, 0, 0, 0.12);background:rgba(0, 0, 0, 0.025);}.cv-placeholder-label.svelte-1ka2eec {font-size:0.7rem;font-weight:500;color:rgba(0, 0, 0, 0.35);letter-spacing:0.02em;user-select:none;}\n\n  /* 3-dot state indicator */.cv-state-dots.svelte-1ka2eec {display:flex;align-items:center;gap:5px;}\n\n  /* Floating position (top-right of content) */.cv-state-dots--floating.svelte-1ka2eec {position:absolute;top:-2px;right:0;z-index:10;opacity:0;transition:opacity 0.2s ease;}.cv-toggle-wrapper.svelte-1ka2eec:hover .cv-state-dots--floating:where(.svelte-1ka2eec),\n  .cv-state-dots--floating.svelte-1ka2eec:focus-within {opacity:1;}\n\n  /* Adjust floating dots when bordered */.has-border.svelte-1ka2eec .cv-state-dots--floating:where(.svelte-1ka2eec) {top:4px;right:8px;}.cv-dot.svelte-1ka2eec {position:relative;width:7px;height:7px;border-radius:50%;border:1.5px solid rgba(0, 0, 0, 0.2);background:transparent;padding:0;cursor:pointer;transition:all 0.15s ease;flex-shrink:0;}\n\n  /* Expand tap target to ~20px while keeping dot visually small */.cv-dot.svelte-1ka2eec::before {content:\'\';position:absolute;top:50%;left:50%;width:20px;height:20px;transform:translate(-50%, -50%);border-radius:50%;}.cv-dot.svelte-1ka2eec:hover {border-color:rgba(0, 0, 0, 0.5);transform:scale(1.3);}.cv-dot.active.svelte-1ka2eec {background:var(--cv-primary, #3E84F4);border-color:var(--cv-primary, #3E84F4);}.cv-dot.active.svelte-1ka2eec:hover {transform:scale(1.3);}\n\n  /* Expand Button — upgraded to pill style */.cv-expand-btn.svelte-1ka2eec {position:absolute;bottom:-28px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;background:rgba(0, 0, 0, 0.04);border:1px solid rgba(0, 0, 0, 0.08);border-radius:999px;padding:3px 12px;cursor:pointer;z-index:100;color:#666;font-size:0.7rem;font-weight:500;font-family:inherit;line-height:1;transition:all 0.2s ease;}.cv-expand-btn.svelte-1ka2eec:hover {background:rgba(0, 0, 0, 0.08);border-color:rgba(0, 0, 0, 0.15);color:#333;transform:translateX(-50%) scale(1.02);}.cv-expand-btn.svelte-1ka2eec svg {display:block;width:14px;height:14px;opacity:0.6;flex-shrink:0;}.cv-expand-btn.svelte-1ka2eec:hover svg {opacity:1;}.cv-expand-label.svelte-1ka2eec {white-space:nowrap;}'
     };
 
     function Toggle($$anchor, $$props) {
@@ -16354,6 +16955,7 @@
     		assetId = prop($$props, 'assetId', 7, ''),
     		showPeekBorder = prop($$props, 'showPeekBorder', 7, false),
     		showLabel = prop($$props, 'showLabel', 7, false),
+    		showInlineControl = prop($$props, 'showInlineControl', 7, false),
     		placeholderId = prop($$props, 'placeholderId', 7, '');
 
     	// Derive toggle IDs from toggle-id prop (can have multiple space-separated IDs)
@@ -16505,6 +17107,20 @@
     		set(localExpanded, !get(localExpanded));
     	}
 
+    	// Derive current state for inline 3-dot indicator
+    	let currentInlineState = user_derived(() => {
+    		if (get(showState)) return 'show';
+    		if (get(peekState)) return 'peek';
+
+    		return 'hide';
+    	});
+
+    	// Set toggle to a specific state (used by inline dot controls)
+    	function setToggleState(e, targetState) {
+    		e.stopPropagation();
+    		get(toggleIds).forEach((id) => activeStateStore.updateToggleState(id, targetState));
+    	}
+
     	// Reactive asset rendering - renders assets when toggle becomes visible
     	user_effect(() => {
     		if (get(showFullContent) && assetId() && !get(hasRendered) && derivedStore.assetsManager && contentEl) {
@@ -16550,6 +17166,15 @@
     			flushSync();
     		},
 
+    		get showInlineControl() {
+    			return showInlineControl();
+    		},
+
+    		set showInlineControl($$value = false) {
+    			showInlineControl($$value);
+    			flushSync();
+    		},
+
     		get placeholderId() {
     			return placeholderId();
     		},
@@ -16560,86 +17185,190 @@
     		}
     	};
 
-    	var div = root$5();
-    	let classes;
-    	var node = child(div);
+    	var fragment = root$5();
+    	var node = first_child(fragment);
 
     	{
-    		var consequent = ($$anchor) => {
-    			var div_1 = root_1$3();
-    			var text = child(div_1, true);
+    		var consequent_1 = ($$anchor) => {
+    			var div = root_1$3();
+    			var node_1 = child(div);
+
+    			{
+    				var consequent = ($$anchor) => {
+    					var span = root_2$2();
+    					var text = child(span, true);
+
+    					reset(span);
+    					template_effect(() => set_text(text, get(labelText)));
+    					append($$anchor, span);
+    				};
+
+    				if_block(node_1, ($$render) => {
+    					if (get(labelText)) $$render(consequent);
+    				});
+    			}
+
+    			var div_1 = sibling(node_1, 2);
+
+    			each(div_1, 20, () => ['hide', 'peek', 'show'], index, ($$anchor, dotState) => {
+    				var button = root_3$1();
+
+    				button.__click = (e) => setToggleState(e, dotState);
+
+    				template_effect(
+    					($0, $1) => {
+    						set_class(button, 1, `cv-dot ${get(currentInlineState) === dotState ? 'active' : ''}`, 'svelte-1ka2eec');
+    						set_attribute(button, 'aria-label', $0);
+    						set_attribute(button, 'title', $1);
+    						set_attribute(button, 'aria-pressed', get(currentInlineState) === dotState);
+    					},
+    					[
+    						() => dotState.charAt(0).toUpperCase() + dotState.slice(1),
+    						() => dotState.charAt(0).toUpperCase() + dotState.slice(1)
+    					]
+    				);
+
+    				append($$anchor, button);
+    			});
 
     			reset(div_1);
-    			template_effect(() => set_text(text, get(labelText)));
-    			append($$anchor, div_1);
+    			reset(div);
+    			template_effect(() => set_attribute(div, 'aria-label', `Toggle: ${get(labelText) ?? ''}`));
+    			append($$anchor, div);
     		};
 
     		if_block(node, ($$render) => {
-    			if (showLabel() && get(labelText) && !get(isHidden)) $$render(consequent);
+    			if (showInlineControl() && !get(isPlaceholderMode) && get(isHidden)) $$render(consequent_1);
     		});
     	}
 
     	var div_2 = sibling(node, 2);
-    	let styles;
-    	var div_3 = child(div_2);
-    	var node_1 = child(div_3);
-
-    	slot(node_1, $$props, 'default', {});
-    	reset(div_3);
-    	bind_this(div_3, ($$value) => innerEl = $$value, () => innerEl);
-    	reset(div_2);
-    	bind_this(div_2, ($$value) => contentEl = $$value, () => contentEl);
-
-    	var node_2 = sibling(div_2, 2);
+    	let classes;
+    	var node_2 = child(div_2);
 
     	{
     		var consequent_2 = ($$anchor) => {
-    			var button = root_2$2();
+    			var div_3 = root_4();
+    			var text_1 = child(div_3, true);
 
-    			button.__click = toggleExpand;
-
-    			var node_3 = child(button);
-
-    			{
-    				var consequent_1 = ($$anchor) => {
-    					IconChevronUp($$anchor, {});
-    				};
-
-    				var alternate = ($$anchor) => {
-    					IconChevronDown($$anchor, {});
-    				};
-
-    				if_block(node_3, ($$render) => {
-    					if (get(localExpanded)) $$render(consequent_1); else $$render(alternate, false);
-    				});
-    			}
-
-    			reset(button);
-    			template_effect(() => set_attribute(button, 'aria-label', get(localExpanded) ? 'Collapse content' : 'Expand content'));
-    			append($$anchor, button);
+    			reset(div_3);
+    			template_effect(() => set_text(text_1, get(labelText)));
+    			append($$anchor, div_3);
     		};
 
     		if_block(node_2, ($$render) => {
-    			if (get(peekState) && !get(isSmallContent)) $$render(consequent_2);
+    			if (showLabel() && get(labelText) && !get(isHidden)) $$render(consequent_2);
     		});
     	}
 
-    	reset(div);
+    	var node_3 = sibling(node_2, 2);
+
+    	{
+    		var consequent_3 = ($$anchor) => {
+    			var div_4 = root_5();
+
+    			each(div_4, 20, () => ['hide', 'peek', 'show'], index, ($$anchor, dotState) => {
+    				var button_1 = root_6();
+
+    				button_1.__click = (e) => setToggleState(e, dotState);
+
+    				template_effect(
+    					($0, $1) => {
+    						set_class(button_1, 1, `cv-dot ${get(currentInlineState) === dotState ? 'active' : ''}`, 'svelte-1ka2eec');
+    						set_attribute(button_1, 'aria-label', $0);
+    						set_attribute(button_1, 'title', $1);
+    						set_attribute(button_1, 'aria-pressed', get(currentInlineState) === dotState);
+    					},
+    					[
+    						() => dotState.charAt(0).toUpperCase() + dotState.slice(1),
+    						() => dotState.charAt(0).toUpperCase() + dotState.slice(1)
+    					]
+    				);
+
+    				append($$anchor, button_1);
+    			});
+
+    			reset(div_4);
+    			append($$anchor, div_4);
+    		};
+
+    		if_block(node_3, ($$render) => {
+    			if (showInlineControl() && !get(isPlaceholderMode) && !get(isHidden)) $$render(consequent_3);
+    		});
+    	}
+
+    	var div_5 = sibling(node_3, 2);
+    	let styles;
+    	var div_6 = child(div_5);
+    	var node_4 = child(div_6);
+
+    	slot(node_4, $$props, 'default', {});
+    	reset(div_6);
+    	bind_this(div_6, ($$value) => innerEl = $$value, () => innerEl);
+    	reset(div_5);
+    	bind_this(div_5, ($$value) => contentEl = $$value, () => contentEl);
+
+    	var node_5 = sibling(div_5, 2);
+
+    	{
+    		var consequent_5 = ($$anchor) => {
+    			var button_2 = root_7();
+
+    			button_2.__click = toggleExpand;
+
+    			var node_6 = child(button_2);
+
+    			{
+    				var consequent_4 = ($$anchor) => {
+    					var fragment_1 = root_8();
+    					var node_7 = first_child(fragment_1);
+
+    					IconChevronUp(node_7, {});
+    					next(2);
+    					append($$anchor, fragment_1);
+    				};
+
+    				var alternate = ($$anchor) => {
+    					var fragment_2 = root_9();
+    					var node_8 = first_child(fragment_2);
+
+    					IconChevronDown(node_8, {});
+    					next(2);
+    					append($$anchor, fragment_2);
+    				};
+
+    				if_block(node_6, ($$render) => {
+    					if (get(localExpanded)) $$render(consequent_4); else $$render(alternate, false);
+    				});
+    			}
+
+    			reset(button_2);
+    			template_effect(() => set_attribute(button_2, 'aria-label', get(localExpanded) ? 'Show less' : 'Show more'));
+    			append($$anchor, button_2);
+    		};
+
+    		if_block(node_5, ($$render) => {
+    			if (get(peekState) && !get(isSmallContent)) $$render(consequent_5);
+    		});
+    	}
+
+    	reset(div_2);
 
     	template_effect(() => {
-    		classes = set_class(div, 1, 'cv-toggle-wrapper svelte-1ka2eec', null, classes, {
+    		classes = set_class(div_2, 1, 'cv-toggle-wrapper svelte-1ka2eec', null, classes, {
     			expanded: get(showFullContent) && !get(showPeekContent),
     			peeking: get(showPeekContent),
     			'peek-mode': get(peekState),
     			hidden: get(isHidden),
-    			'has-border': showPeekBorder() && get(peekState)
+    			'has-border': showPeekBorder() && get(peekState),
+    			'has-inline-control': showInlineControl() && !get(isPlaceholderMode)
     		});
 
-    		styles = set_style(div_2, '', styles, { 'max-height': get(currentMaxHeight) });
+    		styles = set_style(div_5, '', styles, { 'max-height': get(currentMaxHeight) });
     	});
 
-    	event('transitionend', div_2, handleTransitionEnd);
-    	append($$anchor, div);
+    	event('transitionend', div_5, handleTransitionEnd);
+    	append($$anchor, fragment);
 
     	return pop($$exports);
     }
@@ -16659,6 +17388,13 @@
     		},
 
     		showLabel: { attribute: 'show-label', reflect: true, type: 'Boolean' },
+
+    		showInlineControl: {
+    			attribute: 'show-inline-control',
+    			reflect: true,
+    			type: 'Boolean'
+    		},
+
     		placeholderId: { attribute: 'placeholder-id', reflect: true, type: 'String' }
     	},
     	['default'],
@@ -16721,12 +17457,12 @@
     var root_2$1 = from_svg(`<path d="M4 2v13l4-2.5L12 15V2H4zm1 1h6v10.5l-3-1.88L5 13.5V3z"></path>`);
     var root$3 = from_svg(`<svg><!></svg>`);
 
-    function IconBookmark($$anchor, $$props) {
-    	let isPinned = prop($$props, 'isPinned', 3, false),
-    		rest = rest_props($$props, ['$$slots', '$$events', '$$legacy', 'isPinned']);
+    function IconMark($$anchor, $$props) {
+    	let isMarked = prop($$props, 'isMarked', 3, false),
+    		rest = rest_props($$props, ['$$slots', '$$events', '$$legacy', 'isMarked']);
 
-    	// Derived opacity based on isPinned
-    	const extraOpacity = user_derived(() => isPinned() ? '1' : '0.6');
+    	// Derived opacity based on isMarked
+    	const extraOpacity = user_derived(() => isMarked() ? '1' : '0.6');
 
     	var svg = root$3();
 
@@ -16756,7 +17492,7 @@
     		};
 
     		if_block(node, ($$render) => {
-    			if (isPinned()) $$render(consequent); else $$render(alternate, false);
+    			if (isMarked()) $$render(consequent); else $$render(alternate, false);
     		});
     	}
 
@@ -16764,14 +17500,14 @@
     	append($$anchor, svg);
     }
 
-    var root_2 = from_html(`<li class="nav-item svelte-1ujqpe3"><a role="tab" title="Double-click a tab to 'bookmark' it in all similar tab groups."><span class="cv-tab-header-container svelte-1ujqpe3"><span class="cv-tab-header-text svelte-1ujqpe3"><!></span> <span role="button" title="Click to bookmark this tab"><!></span></span></a></li>`);
-    var root_1$1 = from_html(`<ul class="cv-tabs-nav nav-tabs svelte-1ujqpe3" role="tablist"></ul>`);
+    var root_2 = from_html(`<li class="cv-tabgroup-item svelte-1ujqpe3"><div><a role="tab" title="Double-click a tab to 'mark' it in all similar tab groups."><span class="cv-tab-header-text svelte-1ujqpe3"><!></span></a> <button type="button"><!></button></div></li>`);
+    var root_1$1 = from_html(`<ul class="cv-tabgroup-nav svelte-1ujqpe3" role="tablist"></ul>`);
     var root_3 = from_html(`<link rel="stylesheet"/>`);
     var root$2 = from_html(`<div class="cv-tabgroup-container"><!> <!> <div class="cv-tabgroup-content"><!></div> <div class="cv-tabgroup-bottom-border svelte-1ujqpe3"></div></div>`);
 
     const $$css$4 = {
     	hash: 'svelte-1ujqpe3',
-    	code: ':host {display:block;margin-bottom:24px;}\n\n  /* Tab navigation styles */ul.nav-tabs.svelte-1ujqpe3 {display:flex;flex-wrap:wrap;padding-left:0;margin-top:0.5rem;margin-bottom:0;list-style:none;border-bottom:1px solid var(--cv-border, rgba(128, 128, 128, 0.3));align-items:stretch;gap:0.5rem;}.nav-item.svelte-1ujqpe3 {margin-bottom:-1px;list-style:none;display:flex;align-items:stretch;}.nav-link.svelte-1ujqpe3 {display:flex;align-items:center;justify-content:center;padding:0.5rem 0.75rem;color:inherit;opacity:0.7;text-decoration:none;background-color:transparent;border:none;border-bottom:2px solid transparent;transition:opacity 0.15s ease-in-out,\n      border-color 0.15s ease-in-out;cursor:pointer;min-height:2.5rem;box-sizing:border-box;font-weight:500;}.nav-link.svelte-1ujqpe3 p {margin:0;display:inline;}.nav-link.svelte-1ujqpe3:hover,\n  .nav-link.svelte-1ujqpe3:focus {opacity:1;border-bottom-color:var(--cv-border, rgba(128, 128, 128, 0.3));isolation:isolate;}.nav-link.active.svelte-1ujqpe3 {opacity:1;border-bottom-color:currentColor;}.nav-link.svelte-1ujqpe3:focus {outline:0;}.cv-tab-header-container.svelte-1ujqpe3 {display:flex;align-items:center;gap:6px;}.cv-tab-header-text.svelte-1ujqpe3 {flex:1;}.cv-tab-pin-icon.svelte-1ujqpe3 {display:inline-flex;align-items:center;line-height:0;flex-shrink:0;opacity:0;transition:opacity 0.15s ease-out;}.nav-link.svelte-1ujqpe3:hover .cv-tab-pin-icon:where(.svelte-1ujqpe3),\n  .nav-link.svelte-1ujqpe3:focus .cv-tab-pin-icon:where(.svelte-1ujqpe3),\n  .cv-tab-pin-icon.is-pinned.svelte-1ujqpe3 {opacity:1;}.cv-tab-pin-icon.svelte-1ujqpe3 svg {vertical-align:middle;width:14px;height:14px;}.cv-tabgroup-bottom-border.svelte-1ujqpe3 {border-bottom:1px solid var(--cv-border, rgba(128, 128, 128, 0.3));}\n\n  @media print {ul.cv-tabs-nav.svelte-1ujqpe3 {display:none !important;}\n  }'
+    	code: ':host {display:block;margin-bottom:24px;}\n\n  /* Tab navigation styles */ul.cv-tabgroup-nav.svelte-1ujqpe3 {display:flex;flex-wrap:wrap;padding-left:0;margin-top:0.5rem;margin-bottom:0;list-style:none;border-bottom:1px solid var(--cv-border, rgba(128, 128, 128, 0.3));align-items:stretch;gap:0.5rem;}.cv-tabgroup-item.svelte-1ujqpe3 {margin-bottom:-1px;list-style:none;display:flex;align-items:stretch;}.cv-tabgroup-link.svelte-1ujqpe3 {display:flex;align-items:center;justify-content:center;padding:0.5rem 0.75rem;color:inherit;opacity:0.7;text-decoration:none;background-color:transparent !important;border:none;border-bottom:2px solid transparent;transition:opacity 0.15s ease-in-out,\n      border-color 0.15s ease-in-out;cursor:pointer;min-height:2.5rem;box-sizing:border-box;font-weight:500;}.cv-tabgroup-link.svelte-1ujqpe3 p {margin:0;display:inline;}.cv-tabgroup-link.svelte-1ujqpe3:hover,\n  .cv-tabgroup-link.svelte-1ujqpe3:focus {opacity:1;border-bottom-color:var(--cv-border, rgba(128, 128, 128, 0.3));isolation:isolate;}.cv-tabgroup-link.active.svelte-1ujqpe3 {opacity:1;background-color:transparent !important;}.cv-tabgroup-link.svelte-1ujqpe3:focus {outline:0;}.cv-tab-wrapper.svelte-1ujqpe3 {display:flex;align-items:center;border-bottom:2px solid transparent;transition:border-color 0.15s ease-in-out;}.cv-tab-wrapper.svelte-1ujqpe3:hover,\n  .cv-tab-wrapper.svelte-1ujqpe3:focus-within {border-bottom-color:var(--cv-border, rgba(128, 128, 128, 0.3));}.cv-tab-wrapper.active.svelte-1ujqpe3 {border-bottom-color:currentColor;}.cv-tab-header-text.svelte-1ujqpe3 {line-height:1;}.cv-tab-marked-icon.svelte-1ujqpe3 {display:inline-flex;align-items:center;justify-content:center;line-height:0;flex-shrink:0;opacity:0;transition:opacity 0.15s ease-out;background:none;border:none;padding:0 8px 0 0;margin:0;cursor:pointer;color:inherit;height:100%;}.cv-tab-wrapper.svelte-1ujqpe3:hover .cv-tab-marked-icon:where(.svelte-1ujqpe3),\n  .cv-tab-wrapper.svelte-1ujqpe3:focus-within .cv-tab-marked-icon:where(.svelte-1ujqpe3),\n  .cv-tab-marked-icon.is-marked.svelte-1ujqpe3 {opacity:1;}.cv-tab-marked-icon.svelte-1ujqpe3 svg {vertical-align:middle;width:14px;height:14px;}.cv-tabgroup-bottom-border.svelte-1ujqpe3 {border-bottom:1px solid var(--cv-border, rgba(128, 128, 128, 0.3));}\n\n  @media print {ul.cv-tabgroup-nav.svelte-1ujqpe3 {display:none !important;}\n  }'
     };
 
     function TabGroup($$anchor, $$props) {
@@ -16779,13 +17515,15 @@
     	append_styles$1($$anchor, $$css$4);
 
     	//  ID of the tabgroup Group
-    	let groupId = prop($$props, 'groupId', 7);
+    	let groupId = prop($$props, 'groupId', 7),
+    		stabilizeScroll = prop($$props, 'stabilizeScroll', 7, true);
 
     	user_effect(() => {
     		if (groupId()) elementStore.registerTabGroup(groupId());
     	});
 
     	let tabs = state(proxy([]));
+    	let containerEl = state(void 0);
     	let contentWrapper = state(void 0);
     	let slotEl = state(null);
     	let initialized = state(false);
@@ -16793,8 +17531,8 @@
     	// Local active tab state (independent per group instance)
     	let localActiveTabId = state('');
 
-    	// Derive pinnedTab from store (shared across groups with same ID)
-    	let pinnedTab = user_derived(() => {
+    	// Derive markedTab from store (shared across groups with same ID)
+    	let markedTab = user_derived(() => {
     		const tabs$ = activeStateStore.state.tabs ?? {};
 
     		return groupId() && tabs$[groupId()] ? tabs$[groupId()] : null;
@@ -16803,18 +17541,18 @@
     	// Track the last seen store state to detect real changes
     	let lastSeenStoreState = state(null);
 
-    	// Authoritative Sync: Only sync when store actually changes
+    	// Authoritative Sync: Only sync when store actually changes.
+    	// NOTE: Scroll stabilization is NOT done here — it's the responsibility of
+    	// the initiating action (handleTabDoubleClick, handleMarkClick, or Modal).
+    	// If this $effect also stabilized, its rAF would compete with the initiator's
+    	// rAF and undo the correction.
     	user_effect(() => {
-    		// If store state has changed from what we last saw
-    		// Note: strict inequality works here because both are strings or null
-    		if (get(pinnedTab) !== get(lastSeenStoreState)) {
-    			set(lastSeenStoreState, get(pinnedTab), true);
+    		if (get(markedTab) !== get(lastSeenStoreState)) {
+    			set(lastSeenStoreState, get(markedTab), true);
 
-    			// If there is a pinned tab, it overrides local state
-    			if (get(pinnedTab)) {
-    				// Check if we actually need to update (avoid redundant DOM work)
-    				if (get(localActiveTabId) !== get(pinnedTab)) {
-    					set(localActiveTabId, get(pinnedTab), true);
+    			if (get(markedTab)) {
+    				if (get(localActiveTabId) !== get(markedTab)) {
+    					set(localActiveTabId, get(markedTab), true);
     					updateVisibility();
     				}
     			}
@@ -16932,36 +17670,54 @@
     	function handleTabClick(tabId, event) {
     		event.preventDefault();
 
-    		// Optimistic Update: Update local state immediately
     		if (get(localActiveTabId) !== tabId) {
+    			const anchor = stabilizeScroll() && get(containerEl) ? captureScrollAnchor(get(containerEl)) : null;
+
     			set(localActiveTabId, tabId, true);
     			updateVisibility();
+
+    			if (anchor) restoreScrollAnchor(anchor);
     		}
     	}
 
     	/**
     	 * Handles double-click events on the navigation tabs.
-    	 * Updates the store to "bookmark" the tab globally across all tab groups with the same ID.
+    	 * Updates the store to "mark" the tab globally across all tab groups with the same ID.
+    	 * Stabilizes scroll position because syncing may change height of OTHER groups above.
     	 */
-    	function handleTabDoubleClick(tabId, event) {
+    	async function handleTabDoubleClick(tabId, event) {
     		event.preventDefault();
 
     		if (!groupId()) return;
 
-    		// Update store directly - this will sync to all tab groups with same group-id
-    		activeStateStore.setPinnedTab(groupId(), tabId);
+    		const anchor = stabilizeScroll() && get(containerEl) ? captureScrollAnchor(get(containerEl)) : null;
+
+    		activeStateStore.setMarkedTab(groupId(), tabId);
+
+    		if (anchor) {
+    			await tick();
+    			restoreScrollAnchor(anchor);
+    		}
     	}
 
     	/**
-    	 * Handles click events specifically on the bookmark icon.
+    	 * Handles click events specifically on the mark icon.
+    	 * Stabilizes scroll position because syncing may change height of OTHER groups above.
     	 */
-    	function handlePinClick(tabId, event) {
+    	async function handleMarkClick(tabId, event) {
     		event.preventDefault();
-    		event.stopPropagation(); // Prevent the tab's click handler from firing
+    		event.stopPropagation();
 
     		if (!groupId()) return;
 
-    		activeStateStore.setPinnedTab(groupId(), tabId);
+    		const anchor = stabilizeScroll() && get(containerEl) ? captureScrollAnchor(get(containerEl)) : null;
+
+    		activeStateStore.setMarkedTab(groupId(), tabId);
+
+    		if (anchor) {
+    			await tick();
+    			restoreScrollAnchor(anchor);
+    		}
     	}
 
     	var $$exports = {
@@ -16971,6 +17727,15 @@
 
     		set groupId($$value) {
     			groupId($$value);
+    			flushSync();
+    		},
+
+    		get stabilizeScroll() {
+    			return stabilizeScroll();
+    		},
+
+    		set stabilizeScroll($$value = true) {
+    			stabilizeScroll($$value);
     			flushSync();
     		}
     	};
@@ -16985,47 +17750,56 @@
     			each(ul, 21, () => get(tabs), (tab) => tab.id, ($$anchor, tab) => {
     				const splitIds = user_derived(() => splitTabIds(get(tab).rawId));
     				const isActive = user_derived(() => get(splitIds).includes(get(localActiveTabId)));
-    				const isPinned = user_derived(() => get(pinnedTab) && get(splitIds).includes(get(pinnedTab)));
+    				const isMarked = user_derived(() => get(markedTab) && get(splitIds).includes(get(markedTab)));
     				var li = root_2();
-    				var a = child(li);
+    				var div_1 = child(li);
     				let classes;
+    				var a = child(div_1);
+    				let classes_1;
 
     				a.__click = (e) => handleTabClick(get(tab).id, e);
     				a.__dblclick = (e) => handleTabDoubleClick(get(tab).id, e);
 
     				var span = child(a);
-    				var span_1 = child(span);
-    				var node_1 = child(span_1);
+    				var node_1 = child(span);
 
     				html(node_1, () => get(tab).header);
-    				reset(span_1);
+    				reset(span);
+    				reset(a);
 
-    				var span_2 = sibling(span_1, 2);
-    				let classes_1;
+    				var button = sibling(a, 2);
+    				let classes_2;
 
-    				span_2.__click = (e) => handlePinClick(get(tab).id, e);
+    				button.__click = (e) => handleMarkClick(get(tab).id, e);
 
-    				var node_2 = child(span_2);
+    				button.__dblclick = (e) => {
+    					e.stopPropagation();
+    				};
 
-    				IconBookmark(node_2, {
-    					get isPinned() {
-    						return get(isPinned);
+    				var node_2 = child(button);
+
+    				IconMark(node_2, {
+    					get isMarked() {
+    						return get(isMarked);
     					}
     				});
 
-    				reset(span_2);
-    				reset(span);
-    				reset(a);
+    				reset(button);
+    				reset(div_1);
     				reset(li);
 
     				template_effect(() => {
-    					classes = set_class(a, 1, 'nav-link svelte-1ujqpe3', null, classes, { active: get(isActive) });
+    					classes = set_class(div_1, 1, 'cv-tab-wrapper svelte-1ujqpe3', null, classes, { active: get(isActive) });
+    					classes_1 = set_class(a, 1, 'cv-tabgroup-link svelte-1ujqpe3', null, classes_1, { active: get(isActive) });
     					set_attribute(a, 'href', '#' + get(tab).id);
     					set_attribute(a, 'aria-selected', get(isActive));
     					set_attribute(a, 'data-tab-id', get(tab).id);
     					set_attribute(a, 'data-raw-tab-id', get(tab).rawId);
     					set_attribute(a, 'data-group-id', groupId());
-    					classes_1 = set_class(span_2, 1, 'cv-tab-pin-icon svelte-1ujqpe3', null, classes_1, { 'is-pinned': get(isPinned) });
+    					classes_2 = set_class(button, 1, 'cv-tab-marked-icon svelte-1ujqpe3', null, classes_2, { 'is-marked': get(isMarked) });
+    					set_attribute(button, 'title', get(isMarked) ? "Unmark this tab" : "Mark this tab");
+    					set_attribute(button, 'aria-label', get(isMarked) ? "Unmark this tab" : "Mark this tab");
+    					set_attribute(button, 'aria-pressed', !!get(isMarked));
     				});
 
     				append($$anchor, li);
@@ -17049,14 +17823,15 @@
     		append($$anchor, link_1);
     	});
 
-    	var div_1 = sibling(node_3, 2);
-    	var node_4 = child(div_1);
+    	var div_2 = sibling(node_3, 2);
+    	var node_4 = child(div_2);
 
     	slot(node_4, $$props, 'default', {});
-    	reset(div_1);
-    	bind_this(div_1, ($$value) => set(contentWrapper, $$value), () => get(contentWrapper));
+    	reset(div_2);
+    	bind_this(div_2, ($$value) => set(contentWrapper, $$value), () => get(contentWrapper));
     	next(2);
     	reset(div);
+    	bind_this(div, ($$value) => set(containerEl, $$value), () => get(containerEl));
     	append($$anchor, div);
 
     	return pop($$exports);
@@ -17067,7 +17842,13 @@
     customElements.define('cv-tabgroup', create_custom_element(
     	TabGroup,
     	{
-    		groupId: { attribute: 'group-id', reflect: true, type: 'String' }
+    		groupId: { attribute: 'group-id', reflect: true, type: 'String' },
+
+    		stabilizeScroll: {
+    			attribute: 'stabilize-scroll',
+    			reflect: true,
+    			type: 'Boolean'
+    		}
     	},
     	['default'],
     	[],

@@ -147,6 +147,7 @@
         "toggles": "Toggles",
         "multi-id-toggles": "Multi-ID Toggles",
         "toggles-with-peek-mode": "Toggles with Peek Mode",
+        "inline-controls": "Inline Controls",
         "attributes-and-amp-options-of-cv-toggle": "Attributes &amp; Options of &lt;cv-toggle&gt;",
         "configuration": "Configuration",
         "key-configuration-fields-in-custardui-config-json-for-toggles": "Key Configuration Fields in custardui.config.json for Toggles",
@@ -251,6 +252,36 @@
       "headings": {
         "how-do-the-components-work-rough-explanation": "How do the components work (rough explanation)",
         "placeholders": "Placeholders"
+      },
+      "headingKeywords": {}
+    },
+    {
+      "src": "devGuide/components/anchor.md",
+      "title": "Developer Guide - DOM Element Locator and Anchors",
+      "headings": {
+        "overview": "Overview",
+        "the-problem-it-solves": "The Problem It Solves",
+        "core-concepts": "Core Concepts",
+        "1-the-anchor-descriptor": "1. The Anchor Descriptor",
+        "2-stable-text-and-amp-placeholder-awareness": "2. Stable Text &amp; Placeholder Awareness",
+        "3-serialization": "3. Serialization",
+        "4-resolution-fuzzy-matching": "4. Resolution (Fuzzy Matching)",
+        "data-flow": "Data Flow",
+        "module-layout": "Module Layout",
+        "key-considerations": "Key Considerations"
+      },
+      "headingKeywords": {}
+    },
+    {
+      "src": "devGuide/components/tabLogic.md",
+      "title": "Developer Guide - Tab Logic",
+      "headings": {
+        "overview": "Overview",
+        "core-principles": "Core Principles",
+        "declarative-visibility": "Declarative Visibility",
+        "state-synchronization": "State Synchronization",
+        "layout-stabilization-scroll-anchoring": "Layout Stabilization (Scroll Anchoring)",
+        "key-considerations": "Key Considerations"
       },
       "headingKeywords": {}
     },
@@ -365,7 +396,8 @@
       "title": "Developer Guide - Tabs",
       "headings": {
         "tabs": "Tabs",
-        "fruits-tabs": "Fruits Tabs"
+        "fruits-tabs": "Fruits Tabs",
+        "color-schemes": "Color Schemes"
       },
       "headingKeywords": {}
     },
